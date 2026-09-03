@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Show Installed Games</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Position">
+      <sdpi-textfield setting="index" placeholder="1" pattern="[0-9]*" maxlength="4"></sdpi-textfield>
+    </sdpi-item>
+
+    <p class="hint">
+      This key shows the game at this position in your library. Number your keys 1, 2, 3… and the profile fills itself
+      in. A position past the end of the list stays blank.
+    </p>
+
+    <p class="hint">
+      <strong>Leave it empty</strong> and the key becomes the way in: it keeps the action icon and, when pressed, jumps
+      to the bundled Steam profile.
+    </p>
+
+    <p class="section">Shared by every key of this action</p>
+
+    <sdpi-item label="Order by">
+      <sdpi-select setting="sortOrder" global default="name">
+        <option value="name">Name (A–Z)</option>
+        <option value="recent">Recently played</option>
+        <option value="size">Size on disk</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Image">
+      <sdpi-select setting="artStyle" global default="logo">
+        <option value="capsule">Vertical capsule</option>
+        <option value="header">Banner</option>
+        <option value="logo">Logo on background</option>
+        <option value="hero">Wide background</option>
+        <option value="none">No image</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Framing">
+      <sdpi-select setting="artFit" global default="fill">
+        <option value="fill">Fill the key</option>
+        <option value="fit">Show it all</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Title">
+      <sdpi-checkbox setting="showTitle" global label="Write the game name on the key"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Status">
+      <sdpi-checkbox
+        setting="showStatus"
+        global
+        default="true"
+        label="Frame the key while running or updating"
+      ></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Play time">
+      <sdpi-checkbox setting="showPlayTime" global label="Show how long the running game has been open"></sdpi-checkbox>
+    </sdpi-item>
+
+    <p class="hint">
+      Adds a line under the key that is actually running, not merely updating, counting up from when the plugin first
+      saw it open. Restarting the plugin restarts the count.
+    </p>
+
+    <sdpi-item label="Long press">
+      <sdpi-select setting="longPress" global default="none">
+        <option value="none">Nothing, always launch</option>
+        <option value="store">Open the store page</option>
+        <option value="hub">Open the Community Hub</option>
+        <option value="uninstall">Open the uninstall dialog</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <p class="hint">
+      A tap always launches the game shown on the key. Set this to hold the key down instead for the page above; a
+      quick release still launches as usual.
+    </p>
+
+    <sdpi-item label="Empty keys">
+      <sdpi-file setting="emptyImage" global accept="image/png, image/jpeg" label="Choose image…"></sdpi-file>
+    </sdpi-item>
+
+    <sdpi-item>
+      <sdpi-button id="reset-empty" disabled>Reset to the default image</sdpi-button>
+    </sdpi-item>
+
+    <script>
+      (() => {
+        const client = SDPIComponents.streamDeckClient;
+        const reset = document.getElementById("reset-empty");
+
+        /**
+         * The button is only useful once an image has actually been picked, so it stays
+         * disabled until then, otherwise it reads as something that does nothing. The title
+         * spells out why, since a disabled control with no explanation just looks broken.
+         */
+        function sync(settings) {
+          const hasCustomImage = ((settings ?? {}).emptyImage ?? "").trim() !== "";
+
+          reset.disabled = !hasCustomImage;
+          reset.title = hasCustomImage
+            ? "Clears the picked image so empty positions fall back to the built-in default."
+            : "No custom image is set, there is nothing to reset yet.";
+        }
+
+        reset.addEventListener("click", async () => {
+          // Global settings are stored whole, so the rest has to be carried across.
+          const globals = (await client.getGlobalSettings()) ?? {};
+          await client.setGlobalSettings({ ...globals, emptyImage: "" });
+          sync({});
+        });
+
+        client.didReceiveGlobalSettings.subscribe((ev) => sync(ev.payload?.settings));
+        client.getGlobalSettings().then(sync);
+      })();
+    </script>
+
+    <sdpi-item label="Support">
+      <div class="support-block">
+        <div class="support-links">
+          <a
+            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+          </a>
+
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+          </a>
+        </div>
+
+        <p class="support-text">
+          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
+          GitHub ⭐.
+        </p>
+
+        <p class="support-text">
+          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+          future updates.
+        </p>
+      </div>
+    </sdpi-item>
+  </body>
+</html>

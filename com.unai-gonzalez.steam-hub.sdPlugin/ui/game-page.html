@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Game Page</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Game">
+      <sdpi-select
+        setting="appId"
+        datasource="getGames"
+        show-refresh
+        placeholder="Select a game…"
+        loading="Looking for games…"
+      ></sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="App ID">
+      <sdpi-textfield setting="customAppId" placeholder="e.g. 292030" maxlength="10"></sdpi-textfield>
+    </sdpi-item>
+
+    <p class="hint">
+      Optional. Overrides the game above, use it for anything not installed here, since a store or hub link works either
+      way. It is the number in the game's store or SteamDB URL.
+    </p>
+
+    <sdpi-item label="Opens">
+      <sdpi-select setting="page" default="store">
+        <option value="store">Store page</option>
+        <option value="hub">Community Hub</option>
+        <option value="uninstall">Uninstall dialog</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Image">
+      <sdpi-select setting="artStyle" default="logo">
+        <option value="capsule">Vertical capsule</option>
+        <option value="header">Banner</option>
+        <option value="logo">Logo on background</option>
+        <option value="hero">Wide background</option>
+        <option value="none">No image</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Framing">
+      <sdpi-select setting="artFit" default="fill">
+        <option value="fill">Fill the key</option>
+        <option value="fit">Show it all</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <p id="status"></p>
+
+    <sdpi-item label="Support">
+      <div class="support-block">
+        <div class="support-links">
+          <a
+            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+          </a>
+
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+          </a>
+        </div>
+
+        <p class="support-text">
+          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
+          GitHub ⭐.
+        </p>
+
+        <p class="support-text">
+          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+          future updates.
+        </p>
+      </div>
+    </sdpi-item>
+
+    <script>
+      (() => {
+        const status = document.getElementById("status");
+
+        // The plugin sends this straight after the game list, so "no games" can be told
+        // apart from "no Steam" without digging through the logs.
+        SDPIComponents.streamDeckClient.sendToPropertyInspector.subscribe((ev) => {
+          const payload = ev.payload ?? {};
+          if (payload.event === "status") {
+            status.textContent = payload.text ?? "";
+            status.classList.toggle("warn", payload.ok === false);
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

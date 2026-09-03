@@ -1,0 +1,156 @@
+{
+  "Name": "Steam Hub",
+  "Version": "1.0.0.0",
+  "Author": "Unai Gonzalez",
+  "Actions": [
+    {
+      "Name": "Launch game",
+      "UUID": "com.unai-gonzalez.steam-hub.launch",
+      "Icon": "imgs/actions/launch/icon",
+      "Tooltip": "Launches a Steam game and shows its store art on the key.",
+      "PropertyInspectorPath": "ui/launch-game.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/launch/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Random game",
+      "UUID": "com.unai-gonzalez.steam-hub.random",
+      "Icon": "imgs/actions/random/icon",
+      "Tooltip": "Launches one of your installed games at random.",
+      "PropertyInspectorPath": "ui/random-game.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/random/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Show installed games",
+      "UUID": "com.unai-gonzalez.steam-hub.slot",
+      "Icon": "imgs/actions/slot/icon",
+      "Tooltip": "Shows the installed game at a given position, so a whole profile lists your library.",
+      "PropertyInspectorPath": "ui/show-installed.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/slot/key",
+          "TitleAlignment": "middle",
+          "FontFamily": "Arial Black",
+          "FontSize": 15
+        }
+      ]
+    },
+    {
+      "Name": "Steam shortcut",
+      "UUID": "com.unai-gonzalez.steam-hub.shortcut",
+      "Icon": "imgs/actions/shortcut/icon",
+      "Tooltip": "Opens Big Picture, your library, downloads, and other parts of Steam.",
+      "PropertyInspectorPath": "ui/steam-shortcut.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/shortcut/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Steam status",
+      "UUID": "com.unai-gonzalez.steam-hub.status",
+      "Icon": "imgs/actions/status/icon",
+      "Tooltip": "Sets your Steam status to online, away, invisible, or offline.",
+      "PropertyInspectorPath": "ui/steam-status.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/status/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Now playing",
+      "UUID": "com.unai-gonzalez.steam-hub.nowplaying",
+      "Icon": "imgs/actions/nowplaying/icon",
+      "Tooltip": "Shows whichever installed game is currently running, and opens its Community Hub when pressed.",
+      "PropertyInspectorPath": "ui/now-playing.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/nowplaying/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Play timer",
+      "UUID": "com.unai-gonzalez.steam-hub.playtimer",
+      "Icon": "imgs/actions/playtimer/icon",
+      "Tooltip": "Counts up while a game is running, and opens its Community Hub when pressed.",
+      "PropertyInspectorPath": "ui/play-timer.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/playtimer/key",
+          "TitleAlignment": "middle",
+          "FontFamily": "Arial Black",
+          "FontSize": 15
+        }
+      ]
+    },
+    {
+      "Name": "Game page",
+      "UUID": "com.unai-gonzalez.steam-hub.gamepage",
+      "Icon": "imgs/actions/gamepage/icon",
+      "Tooltip": "Opens one game's store page, Community Hub, or uninstall dialog.",
+      "PropertyInspectorPath": "ui/game-page.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/gamepage/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    }
+  ],
+  "Category": "Steam Hub",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "Launch your Steam games from the Stream Deck, with the game's own art on the key.",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Profiles": [
+    {
+      "Name": "Steam Hub",
+      "DeviceType": 0,
+      "Readonly": false,
+      "DontAutoSwitchWhenInstalled": true,
+      "AutoInstall": true
+    }
+  ],
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "UUID": "com.unai-gonzalez.steam-hub"
+}

@@ -1,0 +1,78 @@
+/*
+ * Shared styling for the plugin's property inspectors.
+ *
+ * sdpi-components only styles what is inside its own shadow DOM, so any plain markup around it —
+ * hints, status lines, the support block, falls back to the browser's default serif. These rules
+ * put that text back in the same face and colours the components use.
+ */
+
+body {
+  margin: 0;
+  padding: 8px 0;
+  font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif;
+  font-size: 9pt;
+  line-height: 1.4;
+  color: #d8d8d8;
+}
+
+/* Explanatory text under a field, aligned with the components' value column. */
+.hint {
+  margin: 4px 0 0;
+  padding: 0 8px 0 97px;
+  color: #969696;
+}
+
+.hint code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #3d3d3d;
+  font-family: Consolas, "SF Mono", Menlo, monospace;
+  font-size: 8.5pt;
+  color: #d8d8d8;
+}
+
+/* A heading that splits a long inspector into sections. */
+.section {
+  margin: 14px 0 6px;
+  padding-left: 97px;
+  font-weight: 600;
+  color: #d8d8d8;
+}
+
+/* Result of the last library scan, shown at the foot of the game picker. */
+#status {
+  margin: 8px 0 0;
+  padding: 0 8px 0 97px;
+  color: #969696;
+}
+
+#status.warn {
+  color: #f5a623;
+}
+
+/* Ko-fi / GitHub block. */
+.support-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.support-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.support-links img {
+  display: block;
+  border-radius: 4px;
+}
+
+.support-links a {
+  cursor: pointer;
+}
+
+.support-text {
+  margin: 0;
+  color: #969696;
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Steam Shortcut</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Opens">
+      <sdpi-select setting="destination" default="bigpicture">
+        <optgroup label="Stream Deck">
+          <option value="gamesprofile">Go to the Steam profile</option>
+          <option value="previousprofile">Back to previous profile</option>
+        </optgroup>
+        <optgroup label="Library">
+          <option value="library">Library</option>
+          <option value="downloads">Downloads</option>
+          <option value="workshop">Workshop</option>
+          <option value="addnonsteamgame">Add a non-Steam game</option>
+        </optgroup>
+        <optgroup label="Community &amp; captures">
+          <option value="friends">Friends list</option>
+          <option value="inventory">Inventory</option>
+          <option value="screenshots">Screenshots</option>
+          <option value="media">Clips &amp; captures</option>
+          <option value="recording">Game recording</option>
+          <option value="servers">Servers</option>
+        </optgroup>
+        <optgroup label="Store">
+          <option value="store">Store</option>
+          <option value="activateproduct">Activate a product key</option>
+        </optgroup>
+        <optgroup label="Big Picture &amp; VR">
+          <option value="bigpicture">Big Picture mode</option>
+          <option value="closebigpicture">Exit Big Picture</option>
+          <option value="startvr">Start SteamVR</option>
+        </optgroup>
+        <optgroup label="Steam client">
+          <option value="settings">Settings</option>
+          <option value="console">Console</option>
+          <option value="changeuser">Switch account</option>
+          <option value="exit">Quit Steam</option>
+        </optgroup>
+        <optgroup label="Music">
+          <option value="music">Music player (needs a music library)</option>
+        </optgroup>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Title">
+      <sdpi-checkbox setting="showTitle" label="Write the destination on the key"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Support">
+      <div class="support-block">
+        <div class="support-links">
+          <a
+            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+          </a>
+
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+          </a>
+        </div>
+
+        <p class="support-text">
+          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
+          GitHub ⭐.
+        </p>
+
+        <p class="support-text">
+          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+          future updates.
+        </p>
+      </div>
+    </sdpi-item>
+  </body>
+</html>

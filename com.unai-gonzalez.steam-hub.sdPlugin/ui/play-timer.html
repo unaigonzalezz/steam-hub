@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Play Timer</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Image">
+      <sdpi-select setting="artStyle" default="none">
+        <option value="none">No image</option>
+        <option value="capsule">Vertical capsule</option>
+        <option value="header">Banner</option>
+        <option value="logo">Logo on background</option>
+        <option value="hero">Wide background</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Framing">
+      <sdpi-select setting="artFit" default="fill">
+        <option value="fill">Fill the key</option>
+        <option value="fit">Show it all</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <p class="hint">
+      The clock is timed by the plugin itself from the moment it first sees a game running, not by Steam's own playtime,
+      restarting the plugin restarts the count.
+    </p>
+
+    <sdpi-item label="Support">
+      <div class="support-block">
+        <div class="support-links">
+          <a
+            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+          </a>
+
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+          </a>
+        </div>
+
+        <p class="support-text">
+          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
+          GitHub ⭐.
+        </p>
+
+        <p class="support-text">
+          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+          future updates.
+        </p>
+      </div>
+    </sdpi-item>
+  </body>
+</html>

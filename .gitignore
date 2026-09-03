@@ -1,0 +1,11 @@
+# Node.js
+node_modules/
+
+# Stream Deck files
+*.sdPlugin/bin
+*.sdPlugin/logs
+# Generated artwork cache
+*.sdPlugin/cache
+.vscode/launch.json
+.vscode/settings.json
+/logs
