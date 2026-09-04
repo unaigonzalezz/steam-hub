@@ -9,3 +9,4 @@ node_modules/
 .vscode/launch.json
 .vscode/settings.json
 /logs
+com.unai-gonzalez.steam-hub.streamDeckPlugin
