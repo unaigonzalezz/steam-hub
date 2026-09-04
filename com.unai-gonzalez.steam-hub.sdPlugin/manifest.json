@@ -160,7 +160,7 @@
       "Name": "Steam Hub",
       "DeviceType": 0,
       "Readonly": false,
-      "DontAutoSwitchWhenInstalled": true,
+      "DontAutoSwitchWhenInstalled": false,
       "AutoInstall": true
     }
   ],
