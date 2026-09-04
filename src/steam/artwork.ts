@@ -32,6 +32,13 @@ const JPEG_QUALITY = 90;
 const FALLBACK_BACKDROP = 0x0f1419ff;
 
 /**
+ * Dev toggle: when on, every key image this module renders is also written to disk via
+ * {@link exportImage}, so the exact bytes sent to a key can be inspected without attaching a
+ * debugger to the Stream Deck app.
+ */
+const EXPORT_IMAGES = false;
+
+/**
  * A single layer of source art. Steam names the same asset differently across client versions, so
  * each kind lists every filename worth trying, best quality first.
  */
@@ -235,7 +242,7 @@ export async function renderEmptyKey(customPath?: string): Promise<string> {
   }
 
   // Last resort, when even the shipped plate has been deleted or replaced with something unreadable.
-  return (emptyKey ??= toDataUri(defaultEmptyKey()));
+  return (emptyKey ??= toDataUri(defaultEmptyKey(), "empty-default"));
 }
 
 let emptyKey: Promise<string> | undefined;
@@ -263,7 +270,10 @@ export async function renderImageFile(file: string): Promise<string | undefined>
   }
 
   const bytes = await readIfImage(file);
-  const image = bytes === undefined ? undefined : await toDataUri(decode(bytes).cover({ w: KEY_SIZE, h: KEY_SIZE }));
+  const image =
+    bytes === undefined
+      ? undefined
+      : await toDataUri(decode(bytes).cover({ w: KEY_SIZE, h: KEY_SIZE }), path.basename(file));
 
   if (fileImages.size >= MAX_CACHED_RENDERS) {
     fileImages.clear();
@@ -335,7 +345,7 @@ async function render(
     if (logo !== undefined) {
       // A logo is a transparent wordmark: it always sits over a backdrop, never cropped.
       const backdrop = await loadFirst(appId, ["hero", "header", "capsule"]);
-      return compose(logo, backdrop, "fit", 0.84, 0.42, badge);
+      return compose(logo, backdrop, "fit", 0.84, 0.42, badge, `${appId}-logo-${badge}`);
     }
 
     // Not every app publishes a logo; a header reads better than an empty key.
@@ -354,7 +364,8 @@ async function render(
     return undefined;
   }
 
-  return fit === "fill" ? compose(art, undefined, "fill", 1, 1, badge) : compose(art, art, "fit", 1, 0.55, badge);
+  const label = `${appId}-${style}-${fit}-${badge}`;
+  return fit === "fill" ? compose(art, undefined, "fill", 1, 1, badge, label) : compose(art, art, "fit", 1, 0.55, badge, label);
 }
 
 /**
@@ -365,6 +376,7 @@ async function render(
  * @param scale Fraction of the key the foreground may occupy when fitting.
  * @param dim Brightness multiplier applied to the backdrop.
  * @param badge Status border to draw around the result.
+ * @param label Short description of the result, passed through to {@link toDataUri}.
  * @returns A `data:` URI.
  */
 async function compose(
@@ -374,9 +386,10 @@ async function compose(
   scale: number,
   dim: number,
   badge: StatusBadge,
+  label: string,
 ): Promise<string> {
   if (fit === "fill") {
-    return toDataUri(outline(decode(foreground).cover({ w: KEY_SIZE, h: KEY_SIZE }), badge));
+    return toDataUri(outline(decode(foreground).cover({ w: KEY_SIZE, h: KEY_SIZE }), badge), label);
   }
 
   const canvas =
@@ -390,7 +403,7 @@ async function compose(
 
   canvas.composite(art, Math.round((KEY_SIZE - art.width) / 2), Math.round((KEY_SIZE - art.height) / 2));
 
-  return toDataUri(outline(canvas, badge));
+  return toDataUri(outline(canvas, badge), label);
 }
 
 /**
@@ -515,11 +528,59 @@ function holeCoverage(
 /**
  * Encodes an image as a `data:` URI Stream Deck can render.
  * @param image Image to encode.
+ * @param label Short description of the image, used to name the file dumped to disk when
+ * {@link EXPORT_IMAGES} is on; see {@link exportImage}.
  * @returns The encoded URI.
  */
-async function toDataUri(image: Image): Promise<string> {
+async function toDataUri(image: Image, label: string): Promise<string> {
   const buffer = await image.getBuffer("image/jpeg", { quality: JPEG_QUALITY });
+  exportImage(label, buffer);
   return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+}
+
+/** Directory rendered images are dumped to when {@link EXPORT_IMAGES} is on, created on first use. */
+let exportDir: Promise<string> | undefined;
+
+/**
+ * Resolves the directory exported images are written to, creating it on first use.
+ * @returns Absolute path to the export directory.
+ */
+function getExportDir(): Promise<string> {
+  return (exportDir ??= (async () => {
+    const dir = pluginPath("cache", "exports");
+    await mkdir(dir, { recursive: true });
+    return dir;
+  })());
+}
+
+/** Tags each exported filename with a unique, sortable suffix so same-labelled renders don't collide. */
+let exportCounter = 0;
+
+/**
+ * Dumps a rendered key image to {@link getExportDir} when {@link EXPORT_IMAGES} is on.
+ *
+ * Fire-and-forget and best-effort: exporting is a debug aid, never something a failed write should
+ * be allowed to break the render over.
+ * @param label Short description of the image, used in the filename; sanitised, so it need not be
+ * filesystem-safe already.
+ * @param buffer Encoded JPEG bytes, exactly as sent to the key.
+ */
+function exportImage(label: string, buffer: Buffer): void {
+  if (!EXPORT_IMAGES) {
+    return;
+  }
+
+  void (async () => {
+    try {
+      const dir = await getExportDir();
+      const safeLabel = label.replace(/[^a-z0-9_-]+/gi, "_");
+      const name = `${Date.now()}-${exportCounter++}-${safeLabel}.jpg`;
+
+      await writeFile(path.join(dir, name), buffer);
+    } catch (err) {
+      streamDeck.logger.warn(`Could not export rendered image "${label}"`, err);
+    }
+  })();
 }
 
 /**

@@ -9,7 +9,9 @@
       "Icon": "imgs/actions/launch/icon",
       "Tooltip": "Launches a Steam game and shows its store art on the key.",
       "PropertyInspectorPath": "ui/launch-game.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/launch/key",
@@ -23,7 +25,9 @@
       "Icon": "imgs/actions/random/icon",
       "Tooltip": "Launches one of your installed games at random.",
       "PropertyInspectorPath": "ui/random-game.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/random/key",
@@ -37,7 +41,9 @@
       "Icon": "imgs/actions/slot/icon",
       "Tooltip": "Shows the installed game at a given position, so a whole profile lists your library.",
       "PropertyInspectorPath": "ui/show-installed.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/slot/key",
@@ -53,7 +59,9 @@
       "Icon": "imgs/actions/shortcut/icon",
       "Tooltip": "Opens Big Picture, your library, downloads, and other parts of Steam.",
       "PropertyInspectorPath": "ui/steam-shortcut.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/shortcut/key",
@@ -67,7 +75,9 @@
       "Icon": "imgs/actions/status/icon",
       "Tooltip": "Sets your Steam status to online, away, invisible, or offline.",
       "PropertyInspectorPath": "ui/steam-status.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/status/key",
@@ -81,7 +91,9 @@
       "Icon": "imgs/actions/nowplaying/icon",
       "Tooltip": "Shows whichever installed game is currently running, and opens its Community Hub when pressed.",
       "PropertyInspectorPath": "ui/now-playing.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/nowplaying/key",
@@ -95,7 +107,9 @@
       "Icon": "imgs/actions/playtimer/icon",
       "Tooltip": "Counts up while a game is running, and opens its Community Hub when pressed.",
       "PropertyInspectorPath": "ui/play-timer.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/playtimer/key",
@@ -111,7 +125,9 @@
       "Icon": "imgs/actions/gamepage/icon",
       "Tooltip": "Opens one game's store page, Community Hub, or uninstall dialog.",
       "PropertyInspectorPath": "ui/game-page.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/gamepage/key",
@@ -123,7 +139,7 @@
   "Category": "Steam Hub",
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
-  "Description": "Launch your Steam games from the Stream Deck, with the game's own art on the key.",
+  "Description": "Turn your Stream Deck into a Steam launcher: box art on every key, live status, and one-tap shortcuts to your whole library.",
   "Icon": "imgs/plugin/marketplace",
   "SDKVersion": 3,
   "Software": {
@@ -152,5 +168,7 @@
     "Version": "24",
     "Debug": "enabled"
   },
+  "SupportURL": "https://github.com/unaigonzalezz/steam-hub",
+  "URL": "https://github.com/unaigonzalezz/steam-hub",
   "UUID": "com.unai-gonzalez.steam-hub"
 }

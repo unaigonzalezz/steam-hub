@@ -17,9 +17,19 @@ body {
 
 /* Explanatory text under a field, aligned with the components' value column. */
 .hint {
-  margin: 4px 0 0;
+  margin: 6px 0 10px;
   padding: 0 8px 0 97px;
   color: #969696;
+}
+
+.hint a {
+  color: #66c0f4;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.hint a:hover {
+  text-decoration: underline;
 }
 
 .hint code {
@@ -33,7 +43,7 @@ body {
 
 /* A heading that splits a long inspector into sections. */
 .section {
-  margin: 14px 0 6px;
+  margin: 18px 0 8px;
   padding-left: 97px;
   font-weight: 600;
   color: #d8d8d8;
@@ -41,7 +51,7 @@ body {
 
 /* Result of the last library scan, shown at the foot of the game picker. */
 #status {
-  margin: 8px 0 0;
+  margin: 8px 0 10px;
   padding: 0 8px 0 97px;
   color: #969696;
 }
@@ -54,7 +64,7 @@ body {
 .support-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .support-links {

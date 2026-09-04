@@ -3,7 +3,7 @@
   <a><img src="./com.unai-gonzalez.steam-hub.sdPlugin/imgs/logo/logo.png" alt="Steam Hub Logo" height="200px"></a>
 </h1>
 
-<h3 align="center">Show all your Steam games on your Stream Deck.</h3>
+<h3 align="center">Turn your Stream Deck into a Steam hub.</h3>
 
 <p align="center">
   <a href="#key-features">Key Features</a> •
@@ -16,13 +16,12 @@
   <a href="#license">License</a>
 </p>
 
-<!-- <h1 align="center">
-  <img src="./docs/preview.png" alt="Steam Hub preview">
-</h1> -->
+<h1 align="center">
+  <img src="./docs/previews/1.png" alt="Steam Hub preview">
+</h1>
 
-<!-- Preview placeholder above: drop a screenshot or banner at docs/preview.png. -->
 
-**Steam Hub** is a Stream Deck plugin that turns your keys into a launcher for your Steam library. Every key shows the game's own store art, so a whole profile becomes a visual grid of your games, no digging through Steam's own library window. It can also fill a whole profile automatically, launch a random game, follow whatever is currently running, time your play sessions, and jump straight to parts of the Steam client like Big Picture or your friends list.
+**Steam Hub** turns your Stream Deck into a hub for your Steam library. Every key wears the game's own store art, so a full profile looks like a shelf of your games instead of a wall of generic icons. Fill a profile automatically, launch something at random, keep an eye on whatever's currently running, time your sessions, and jump straight into Big Picture, your friends list, or any other corner of Steam, all without touching your keyboard.
 
 ---
 

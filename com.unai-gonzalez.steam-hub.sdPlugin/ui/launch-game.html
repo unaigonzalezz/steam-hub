@@ -24,7 +24,13 @@
 
     <p class="hint">
       Optional. Overrides the game above, use it for anything not in the list. It is the number in the game's store or
-      SteamDB URL.
+      SteamDB URL, or look it up on
+      <a
+        onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://steamdb.info/search/' })"
+        target="_blank"
+        rel="noopener noreferrer"
+        >SteamDB</a
+      >.
     </p>
 
     <sdpi-item label="Image">
