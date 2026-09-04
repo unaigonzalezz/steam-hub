@@ -20,6 +20,7 @@
   <img src="./docs/previews/1.png" alt="Steam Hub preview">
 </h1>
 
+[![Get it on Marketplace](./docs/previews/marketplace.png "Get Steam Hub on Marketplace")](https://marketplace.elgato.com/product/steam-hub-c85128ab-908f-4a9d-ad79-c909b243c729)
 
 **Steam Hub** turns your Stream Deck into a hub for your Steam library. Every key wears the game's own store art, so a full profile looks like a shelf of your games instead of a wall of generic icons. Fill a profile automatically, launch something at random, keep an eye on whatever's currently running, time your sessions, and jump straight into Big Picture, your friends list, or any other corner of Steam, all without touching your keyboard.
 
@@ -112,16 +113,7 @@ To fill a whole profile with your library, drag **Show Installed Games** onto ev
 
 ## Download
 
-Steam Hub isn't on the Elgato Marketplace yet. For now, build it from source:
-
-```bash
-npm install
-npm run build
-npx streamdeck link com.unai-gonzalez.steam-hub.sdPlugin
-npx streamdeck restart com.unai-gonzalez.steam-hub
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development setup.
+Get the latest release from the [Stream Deck Marketplace](https://marketplace.elgato.com/product/steam-hub-c85128ab-908f-4a9d-ad79-c909b243c729) or the [GitHub Releases page](https://github.com/unaigonzalezz/steam-hub/releases).
 
 ---
 
