@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 
 import { GamePage } from "./actions/game-page";
 import { LaunchGame } from "./actions/launch-game";
+import { LibraryDial } from "./actions/library-dial";
 import { NowPlaying } from "./actions/now-playing";
 import { PlayTimer } from "./actions/play-timer";
 import { RandomGame } from "./actions/random-game";
@@ -21,5 +22,6 @@ streamDeck.actions.registerAction(new SteamStatus());
 streamDeck.actions.registerAction(new NowPlaying());
 streamDeck.actions.registerAction(new PlayTimer());
 streamDeck.actions.registerAction(new GamePage());
+streamDeck.actions.registerAction(new LibraryDial());
 
 streamDeck.connect();

@@ -134,6 +134,31 @@
           "TitleAlignment": "middle"
         }
       ]
+    },
+    {
+      "Name": "Library dial",
+      "UUID": "com.unai-gonzalez.steam-hub.library-dial",
+      "Icon": "imgs/actions/slot/icon",
+      "Tooltip": "Turn to browse your installed games, press to launch, tap to open the Steam page.",
+      "PropertyInspectorPath": "ui/library-dial.html",
+      "Controllers": [
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "layouts/library-dial.json",
+        "StackColor": "#1b2838",
+        "TriggerDescription": {
+          "Rotate": "Browse library",
+          "Push": "Launch game",
+          "Touch": "Open Steam page"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/slot/key",
+          "TitleAlignment": "middle"
+        }
+      ]
     }
   ],
   "Category": "Steam Hub",
@@ -161,6 +186,13 @@
       "DeviceType": 0,
       "Readonly": false,
       "DontAutoSwitchWhenInstalled": false,
+      "AutoInstall": true
+    },
+    {
+      "Name": "Steam Hub + XL",
+      "DeviceType": 13,
+      "Readonly": false,
+      "DontAutoSwitchWhenInstalled": true,
       "AutoInstall": true
     }
   ],

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Library Dial</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Order">
+      <sdpi-select setting="sortOrder" default="name">
+        <option value="name">Name</option>
+        <option value="recent">Recently played</option>
+        <option value="size">Size on disk</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Image">
+      <sdpi-select setting="artStyle" default="hero">
+        <option value="hero">Wide background</option>
+        <option value="header">Banner</option>
+        <option value="capsule">Vertical capsule</option>
+        <option value="logo">Logo on background</option>
+        <option value="none">No image</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Framing">
+      <sdpi-select setting="artFit" default="fill">
+        <option value="fill">Fill the display</option>
+        <option value="fit">Show it all</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Tap opens">
+      <sdpi-select setting="tapOpens" default="store">
+        <option value="store">Store page</option>
+        <option value="hub">Community hub</option>
+        <option value="none">Nothing</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Support">
+      <div class="support-block">
+        <div class="support-links">
+          <a
+            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+          </a>
+
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+          </a>
+        </div>
+
+        <p class="support-text">
+          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
+          GitHub ⭐.
+        </p>
+
+        <p class="support-text">
+          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+          future updates.
+        </p>
+      </div>
+    </sdpi-item>
+  </body>
+</html>

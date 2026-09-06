@@ -55,7 +55,15 @@ Sort order (name, most recently played, or size), art style, and title all live 
 
 A key left with no position doubles as the way in: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile.
 
-> Only the original Stream Deck and the MK2 ship with a ready-made profile today. See [Requirements](#requirements) and [Contributing](#contributing) if you own another Elgato device.
+> The original Stream Deck, the MK2, and the Stream Deck + XL ship with a ready-made profile today. See [Requirements](#requirements) and [Contributing](#contributing) if you own another Elgato device.
+
+### Library Dial
+
+For devices with encoders. Turn the dial to scroll your whole library on the touch display, press to launch whatever it is showing, tap to open that game's Steam page. The display carries the game's store art, its name, and its position in the library, so you always know where you are.
+
+Where **Show Installed Games** needs a key for every game you want within reach, a single dial reaches all of them, which is the only practical way to browse a large library on a device that cannot show it a key at a time. Each dial keeps its own place, so several dials can sit at different points in the library, and they remember where they were across restarts.
+
+Sort order, art style, framing, and what a tap opens are all set per dial in the property inspector.
 
 ### Random Game
 
@@ -93,7 +101,7 @@ Opens one specific game's store page, Community Hub, or uninstall dialog, using 
 
 > The live status border, Now Playing, and Play Timer currently rely on a Windows-only source for Steam's running/updating state. On macOS, games still launch and show their art normally, just without the live status.
 
-> Right now, only the original Stream Deck and the MK2 have a ready-made "Show installed games" profile bundled with the plugin. Other devices (Mini, XL, Neo, +, ...) can still use every action, they just need their keys set up by hand, or a profile contributed by someone who owns that device. See [CONTRIBUTING.md](CONTRIBUTING.md).
+> Right now, the original Stream Deck, the MK2, and the Stream Deck + XL have a ready-made "Show installed games" profile bundled with the plugin. Other devices (Mini, XL, Neo, +, ...) can still use every action, they just need their keys set up by hand, or a profile contributed by someone who owns that device. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

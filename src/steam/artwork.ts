@@ -25,6 +25,18 @@ export type ArtFit = "fill" | "fit";
 /** Stream Deck keys top out at 144x144 (72pt @2x), which is what every model scales from. */
 const KEY_SIZE = 144;
 
+/**
+ * Dimensions of a render target, in pixels.
+ *
+ * Art is composited at the size it will actually be shown at rather than always at key size,
+ * because anything drawn square and then displayed in a wide slot, an encoder's touch strip
+ * being the case in point, is stretched by the difference.
+ */
+export type Size = { readonly w: number; readonly h: number };
+
+/** The square every key scales from. */
+const KEY: Size = { w: KEY_SIZE, h: KEY_SIZE };
+
 /** JPEG rather than PNG: the composite is always opaque, and it cuts the payload ~7x. */
 const JPEG_QUALITY = 90;
 
@@ -110,12 +122,13 @@ function decode(data: Buffer): Image {
 }
 
 /**
- * Creates a key-sized canvas of a single colour.
+ * Creates a canvas of a single colour.
  * @param color Packed RGBA colour.
+ * @param size Canvas dimensions; a key by default.
  * @returns The canvas.
  */
-function blank(color: number): Image {
-  return new Jimp({ width: KEY_SIZE, height: KEY_SIZE, color }) as unknown as Image;
+function blank(color: number, size: Size = KEY): Image {
+  return new Jimp({ width: size.w, height: size.h, color }) as unknown as Image;
 }
 
 const rendered = new Map<string, string>();
@@ -166,17 +179,20 @@ export type StatusBadge = "idle" | "running" | "updating";
  * @param badge Status border to draw around the art.
  * @returns A `data:` URI, or `undefined` when no art could be found.
  */
-export async function renderKeyImage(
+async function renderSized(
   appId: string,
   style: ArtStyle,
   fit: ArtFit,
-  badge: StatusBadge = "idle",
+  badge: StatusBadge,
+  size: Size,
 ): Promise<string | undefined> {
   if (style === "none" || !/^\d{1,10}$/.test(appId)) {
     return undefined;
   }
 
-  const key = `${appId}:${style}:${fit}:${badge}`;
+  // Size belongs in the key: the same art at key size and at strip size are different images,
+  // and leaving it out hands whichever asked first to whoever asks second.
+  const key = `${appId}:${style}:${fit}:${badge}:${size.w}x${size.h}`;
   const cached = rendered.get(key);
   if (cached !== undefined) {
     return cached;
@@ -187,7 +203,7 @@ export async function renderKeyImage(
     return existing;
   }
 
-  const task = render(appId, style, fit, badge)
+  const task = render(appId, style, fit, badge, size)
     .catch((err) => {
       streamDeck.logger.error(`Failed to render artwork for app ${appId}`, err);
       return undefined;
@@ -205,6 +221,45 @@ export async function renderKeyImage(
   }
 
   return image;
+}
+
+/**
+ * Renders a game's art for a key.
+ * @param appId Steam application id.
+ * @param style Which art to use.
+ * @param fit How to fit it into the key.
+ * @param badge Status border to draw around the art.
+ * @returns A `data:` URI, or `undefined` when no art could be found.
+ */
+export function renderKeyImage(
+  appId: string,
+  style: ArtStyle,
+  fit: ArtFit,
+  badge: StatusBadge = "idle",
+): Promise<string | undefined> {
+  return renderSized(appId, style, fit, badge, KEY);
+}
+
+/**
+ * Renders a game's art for a slot on an encoder's touch strip.
+ *
+ * Composited at the strip's own dimensions rather than at key size. A square key image shown in a
+ * wide slot is stretched by the ratio between them, which on a Stream Deck + is severe enough to
+ * make every piece of box art look wrong; rendering at the target size crops instead, so the art
+ * keeps its proportions. `hero` suits the widest slots, `header` the squarer ones.
+ * @param appId Steam application id.
+ * @param style Which art to use.
+ * @param fit How to fit it into the slot.
+ * @param size Dimensions of the slot, matching the `rect` of the layout item it fills.
+ * @returns A `data:` URI, or `undefined` when no art could be found.
+ */
+export function renderStripImage(
+  appId: string,
+  style: ArtStyle,
+  fit: ArtFit,
+  size: Size,
+): Promise<string | undefined> {
+  return renderSized(appId, style, fit, "idle", size);
 }
 
 /**
@@ -339,13 +394,14 @@ async function render(
   style: Exclude<ArtStyle, "none">,
   fit: ArtFit,
   badge: StatusBadge,
+  size: Size = KEY,
 ): Promise<string | undefined> {
   if (style === "logo") {
     const logo = await loadArt(appId, "logo");
     if (logo !== undefined) {
       // A logo is a transparent wordmark: it always sits over a backdrop, never cropped.
       const backdrop = await loadFirst(appId, ["hero", "header", "capsule"]);
-      return compose(logo, backdrop, "fit", 0.84, 0.42, badge, `${appId}-logo-${badge}`);
+      return compose(logo, backdrop, "fit", 0.84, 0.42, badge, `${appId}-logo-${badge}`, size);
     }
 
     // Not every app publishes a logo; a header reads better than an empty key.
@@ -365,7 +421,9 @@ async function render(
   }
 
   const label = `${appId}-${style}-${fit}-${badge}`;
-  return fit === "fill" ? compose(art, undefined, "fill", 1, 1, badge, label) : compose(art, art, "fit", 1, 0.55, badge, label);
+  return fit === "fill"
+    ? compose(art, undefined, "fill", 1, 1, badge, label, size)
+    : compose(art, art, "fit", 1, 0.55, badge, label, size);
 }
 
 /**
@@ -377,6 +435,7 @@ async function render(
  * @param dim Brightness multiplier applied to the backdrop.
  * @param badge Status border to draw around the result.
  * @param label Short description of the result, passed through to {@link toDataUri}.
+ * @param size Dimensions to composite at; a key by default.
  * @returns A `data:` URI.
  */
 async function compose(
@@ -387,21 +446,23 @@ async function compose(
   dim: number,
   badge: StatusBadge,
   label: string,
+  size: Size = KEY,
 ): Promise<string> {
   if (fit === "fill") {
-    return toDataUri(outline(decode(foreground).cover({ w: KEY_SIZE, h: KEY_SIZE }), badge), label);
+    return toDataUri(outline(decode(foreground).cover({ w: size.w, h: size.h }), badge), label);
   }
 
   const canvas =
     backdrop !== undefined
-      ? decode(backdrop).cover({ w: KEY_SIZE, h: KEY_SIZE }).blur(5).brightness(dim)
-      : blank(FALLBACK_BACKDROP);
+      ? decode(backdrop).cover({ w: size.w, h: size.h }).blur(5).brightness(dim)
+      : blank(FALLBACK_BACKDROP, size);
 
   // `scaleToFit` keeps the aspect ratio without padding, so the composite stays exactly centred.
-  const box = Math.round(KEY_SIZE * scale);
+  // Scaling against the shorter side keeps the art inside a non-square target on both axes.
+  const box = Math.round(Math.min(size.w, size.h) * scale);
   const art = decode(foreground).scaleToFit({ w: box, h: box });
 
-  canvas.composite(art, Math.round((KEY_SIZE - art.width) / 2), Math.round((KEY_SIZE - art.height) / 2));
+  canvas.composite(art, Math.round((size.w - art.width) / 2), Math.round((size.h - art.height) / 2));
 
   return toDataUri(outline(canvas, badge), label);
 }
