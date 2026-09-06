@@ -4,14 +4,16 @@ This guide covers the thing that needs the most help right now, adding the "Show
 installed games" profile for Elgato devices other than the original Stream Deck/MK2,
 which is the only one that works today.
 
-## 1. Why it only works on the original Stream Deck / MK2
+## 1. Why a device needs its own profile
 
 [`manifest.json`](com.unai-gonzalez.steam-hub.sdPlugin/manifest.json) declares the
-plugin's bundled profiles under `"Profiles"`. Right now there's only one entry, for
-`DeviceType: 0` (the original Stream Deck and the MK2, which share the same 5x3 grid).
-It points at
-[`Steam Hub.streamDeckProfile`](com.unai-gonzalez.steam-hub.sdPlugin/Steam%20Hub.streamDeckProfile).
-No other device has an entry, so no other device gets a ready-to-use profile.
+plugin's bundled profiles under `"Profiles"`, one entry per `DeviceType`. There's an
+entry for `DeviceType: 0` (the original Stream Deck and the MK2, which share the same 5x3
+grid), pointing at
+[`Steam Hub.streamDeckProfile`](com.unai-gonzalez.steam-hub.sdPlugin/Steam%20Hub.streamDeckProfile),
+and one for `DeviceType: 13` (the Stream Deck + XL, 9x4). A device with no entry gets no
+ready-to-use profile, because a profile is built around one specific grid and can't be
+reused across devices of different shapes.
 
 ## 2. Why you can't just write the profile file by hand
 
@@ -49,7 +51,7 @@ Grid sizes below come straight from the installed SDK
 | `9` | Stream Deck Neo | 8 keys (4x2) + touch strip | Missing, high priority |
 | `7` | Stream Deck + | 8 keys (4x2) + 4 dials + touch strip | Missing the 8 keys, see note |
 | `10` | Stream Deck Studio | 32 keys, 16x2, + 2 dials | Missing, optional |
-| `13` | Stream Deck + XL | 36 keys, 9x4, + 6 dials + touch strip | Missing the keys, see note |
+| `13` | Stream Deck + XL | 36 keys, 9x4, + 6 dials + touch strip | Has a profile |
 | `12` | Galleon 100 SD (gaming keyboard) | 12 keys, 3x4, + screen + 2 dials | Missing, low priority |
 | `3` | Stream Deck Mobile | iOS/Android app, no fixed grid | See "Mobile and Virtual" note |
 | `11` | Virtual Stream Deck | configurable canvas, up to 8x8 | See "Mobile and Virtual" note |
