@@ -56,9 +56,11 @@ Grid sizes below come straight from the installed SDK
 | `5` | Stream Deck Pedal | 3 pedals, no screen | Not applicable |
 | `4`, `6`, `8` | Corsair G Keys, Corsair Voyager, SCUF Controller | third-party keys, no per-key LCD | Not applicable |
 
-**Dials and touch strip devices (`+`, Studio, `+ XL`, Galleon):** every action in this
-plugin declares `"Controllers": ["Keypad"]` in the manifest, so it can only sit on the
-regular LCD keys. A Stream Deck + profile can only use its 8 keys.
+**Dials and touch strip devices (`+`, Studio, `+ XL`, Galleon):** the actions that show a
+game on a key all declare `"Controllers": ["Keypad"]` in the manifest, so a profile fills
+the regular LCD keys with those. The dials are covered separately by **Library dial**,
+which declares `"Controllers": ["Encoder"]` and scrolls the library on the touch display,
+so a profile for one of these devices can use its keys and its dials.
 
 **Mobile and Virtual Stream Deck:** their grid isn't fixed, it depends on how the user
 sets it up. A single bundled profile can't cover every layout the way it can for fixed
