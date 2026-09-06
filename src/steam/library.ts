@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { exists, findSteam, forgetSteam, type SteamInstall } from "./paths";
+import { exists, findSteam, forgetSteam, type SteamInstall, withTimeout } from "./paths";
 import { getNumber, getObject, getString, parseVdf, type VdfObject } from "./vdf";
 
 /**
@@ -67,6 +67,13 @@ export async function getInstalledGames(refresh = false): Promise<SteamGame[]> {
           cache = { at: Date.now(), games };
         }
         return games;
+      })
+      .catch((err) => {
+        // Every caller treats this as "nothing to show" rather than a rejection to handle, same as
+        // `getAppStates` does for the registry read. Letting this reject instead would leave a key
+        // press or a property inspector request permanently unresolved.
+        streamDeck.logger.error("Could not scan for installed games", err);
+        return [];
       })
       .finally(() => {
         if (scanning === task) {
@@ -242,9 +249,11 @@ export async function listLibraries(steam: SteamInstall): Promise<string[]> {
 async function readLibrary(library: string): Promise<SteamGame[]> {
   const steamapps = path.join(library, "steamapps");
 
+  // `exists` already bounds a dead library's own probe; this covers the rarer case where that
+  // check answered but the actual listing then hangs, a slow network share, say.
   let entries: string[];
   try {
-    entries = await readdir(steamapps);
+    entries = await withTimeout(readdir(steamapps));
   } catch (err) {
     streamDeck.logger.warn(`Could not read library ${steamapps}`, err);
     return [];
