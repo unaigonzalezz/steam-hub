@@ -45,7 +45,7 @@ Grid sizes below come straight from the installed SDK
 |---|---|---|---|
 | `0` | Stream Deck (original / MK2) | 15 keys, 5x3 | Has a profile |
 | `1` | Stream Deck Mini | 6 keys, 3x2 | Missing, high priority |
-| `2` | Stream Deck XL | 32 keys, 8x4 | Missing, high priority |
+| `2` | Stream Deck XL | 32 keys, 8x4 | Has a profile |
 | `9` | Stream Deck Neo | 8 keys (4x2) + touch strip | Missing, high priority |
 | `7` | Stream Deck + | 8 keys (4x2) + 4 dials + touch strip | Missing the 8 keys, see note |
 | `10` | Stream Deck Studio | 32 keys, 16x2, + 2 dials | Missing, optional |

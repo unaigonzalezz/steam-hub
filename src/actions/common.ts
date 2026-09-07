@@ -14,6 +14,7 @@ import { pluginPath, renderImageFile, type StatusBadge } from "../steam/artwork"
  */
 const PROFILE_BY_DEVICE: Partial<Record<DeviceType, string>> = {
   [DeviceType.StreamDeck]: "Steam Hub",
+  [DeviceType.StreamDeckXL]: "Steam Hub XL",
 };
 
 /**
