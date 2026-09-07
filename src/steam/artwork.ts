@@ -251,6 +251,7 @@ export function renderKeyImage(
  * @param style Which art to use.
  * @param fit How to fit it into the slot.
  * @param size Dimensions of the slot, matching the `rect` of the layout item it fills.
+ * @param badge Status border to draw around the art, scaled to the slot.
  * @returns A `data:` URI, or `undefined` when no art could be found.
  */
 export function renderStripImage(
@@ -258,8 +259,9 @@ export function renderStripImage(
   style: ArtStyle,
   fit: ArtFit,
   size: Size,
+  badge: StatusBadge = "idle",
 ): Promise<string | undefined> {
-  return renderSized(appId, style, fit, "idle", size);
+  return renderSized(appId, style, fit, badge, size);
 }
 
 /**
@@ -484,15 +486,23 @@ function outline(image: Image, badge: StatusBadge): Image {
   const [r, g, b] = STATUS_COLOURS[badge];
   const { data, width, height } = image.bitmap;
 
-  // The hole the art shows through: the key inset by the border, with rounded corners.
-  const left = BORDER_WIDTH;
-  const top = BORDER_WIDTH;
-  const right = width - BORDER_WIDTH;
-  const bottom = height - BORDER_WIDTH;
+  // Border weight is proportional to the image, not fixed, so the frame reads the same on an
+  // encoder's touch strip as it does on a key. At key size this is exactly the old constants;
+  // on a strip barely a third as tall, a fixed 11px would swallow most of the height and a
+  // fixed 20px inner radius would exceed what is left, overlapping into nonsense.
+  const scale = Math.min(width, height) / KEY_SIZE;
+  const inset = Math.max(2, Math.round(BORDER_WIDTH * scale));
+  const radius = Math.max(0, Math.round(BORDER_INNER_RADIUS * scale));
+
+  // The hole the art shows through: the image inset by the border, with rounded corners.
+  const left = inset;
+  const top = inset;
+  const right = width - inset;
+  const bottom = height - inset;
 
   for (let y = 0; y < height; y++) {
     // Rows clear of the corners are two straight runs, so they skip the sampling entirely.
-    if (y >= top + BORDER_INNER_RADIUS && y < bottom - BORDER_INNER_RADIUS) {
+    if (y >= top + radius && y < bottom - radius) {
       for (let x = 0; x < left; x++) {
         paintBorder(data, width, x, y, r, g, b, 1);
       }
@@ -504,7 +514,7 @@ function outline(image: Image, badge: StatusBadge): Image {
 
     for (let x = 0; x < width; x++) {
       // Coverage of the border is whatever the rounded hole does not cover.
-      const coverage = 1 - holeCoverage(x, y, left, top, right, bottom, BORDER_INNER_RADIUS);
+      const coverage = 1 - holeCoverage(x, y, left, top, right, bottom, radius);
       if (coverage > 0) {
         paintBorder(data, width, x, y, r, g, b, coverage);
       }

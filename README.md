@@ -63,7 +63,9 @@ For devices with encoders. Turn the dial to scroll your whole library on the tou
 
 Where **Show Installed Games** needs a key for every game you want within reach, a single dial reaches all of them, which is the only practical way to browse a large library on a device that cannot show it a key at a time. Each dial keeps its own place, so several dials can sit at different points in the library, and they remember where they were across restarts.
 
-Sort order, art style, framing, and what a tap opens are all set per dial in the property inspector.
+When the game on show is the one currently running, the art is framed green, amber while it's updating, and the position line counts up alongside it, the same signals the keys use.
+
+Sort order, art style, framing, what a tap opens, and both of those indicators are set per dial in the property inspector.
 
 ### Random Game
 
