@@ -6,12 +6,16 @@ import streamDeck, {
   SingletonAction,
   type TouchTapEvent,
   type WillAppearEvent,
+  type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { type ArtFit, type ArtStyle, renderStripImage, type Size } from "../steam/artwork";
+import { type ArtFit, type ArtStyle, renderStripImage, type Size, type StatusBadge } from "../steam/artwork";
 import { launchGame, openSteamUrl } from "../steam/launch";
 import { getInstalledGames, sortGames, type SortOrder, type SteamGame } from "../steam/library";
-import { type GamePagePage, steamPageUrl } from "./common";
+import { addStatusListener, removeStatusListener } from "../steam/monitor";
+import { getRunningGame } from "../steam/running";
+import { getAppStates } from "../steam/status";
+import { badgeFor, formatElapsed, type GamePagePage, steamPageUrl } from "./common";
 
 /**
  * Per-dial settings for {@link LibraryDial}.
@@ -41,6 +45,12 @@ type LibraryDialSettings = {
    * put it.
    */
   tapOpens?: Extract<GamePagePage, "store" | "hub"> | "none";
+
+  /** Whether the art is framed green while its game runs, amber while it updates. Defaults to on. */
+  showStatus?: boolean;
+
+  /** Whether the position line also counts up while the game on show is running. Defaults to on. */
+  showPlayTime?: boolean;
 };
 
 const DEFAULT_STYLE: ArtStyle = "hero";
@@ -52,10 +62,41 @@ const DEFAULT_SORT: SortOrder = "name";
  * touch strip has nothing left to stretch. Keep the two in step: the layout's `rect` is the
  * source of truth, and this is the same numbers on the render side.
  *
- * At roughly 3.4:1 this is near the proportions of Steam's `library_hero.jpg`, which is why `hero`
+ * At roughly 4:1 this is near the proportions of Steam's `library_hero.jpg`, which is why `hero`
  * is the default style, it lands with only a little cropped from the sides.
  */
-const ART_SIZE: Size = { w: 200, h: 58 };
+const ART_SIZE: Size = { w: 200, h: 50 };
+
+/**
+ * The part of a dial this action draws on, plus the id it is tracked by.
+ *
+ * Structural rather than `DialAction<T>`, so the same helpers serve an event's action and one
+ * pulled from {@link SingletonAction.actions} during a poll.
+ */
+type DialTarget = {
+  readonly id: string;
+  setFeedback(feedback: Record<string, unknown>): Promise<void>;
+};
+
+/** Marks a dial as currently showing the empty state, for {@link LibraryDial.#drawn}. */
+const EMPTY = "empty";
+
+/**
+ * Colour of the clock, matching `STATUS_COLOURS.running` in `artwork.ts` exactly so the text and
+ * the border around the art read as one signal rather than two greens that nearly agree.
+ */
+const RUNNING_COLOUR = "#359b43";
+
+/**
+ * How the line under the name is drawn in each state.
+ *
+ * Both are spelled out in full, and every update sends one of them whole, because a definition
+ * handed to `setFeedback` *sticks*: set a font once and a later plain string keeps it rather than
+ * falling back to the layout. Leaving either half unstated means the clock's size survives the
+ * game exiting.
+ */
+const PLACE_STYLE = { color: "#ffffff", font: { size: 13, weight: 500 } } as const;
+const CLOCK_STYLE = { color: RUNNING_COLOUR, font: { size: 22, weight: 600 } } as const;
 
 /**
  * A dial that scrolls through the installed library on its touch display: turn to move through
@@ -68,12 +109,55 @@ const ART_SIZE: Size = { w: 200, h: 58 };
  */
 @action({ UUID: "com.unai-gonzalez.steam-hub.library-dial" })
 export class LibraryDial extends SingletonAction<LibraryDialSettings> {
+  /** Bound so the same reference can be added to and removed from the shared poll. */
+  readonly #onPoll = (): Promise<void> => this.#redrawAll();
+
+  /** Whether {@link LibraryDial.#onPoll} is currently registered. */
+  #listening = false;
+
+  /** What each dial currently shows, so a poll only repaints what actually changed. */
+  readonly #drawn = new Map<string, string>();
+
   /**
-   * Draws the dial when it comes into view.
+   * Draws the dial when it comes into view, and starts watching for the running game so the
+   * border and clock keep up without the dial being touched.
    * @param ev Event arguments.
    */
   override async onWillAppear(ev: WillAppearEvent<LibraryDialSettings>): Promise<void> {
+    if (!this.#listening) {
+      this.#listening = true;
+      addStatusListener(this.#onPoll);
+    }
+
     await this.#draw(ev.action, ev.payload.settings);
+  }
+
+  /**
+   * Stops polling once the last dial of this action leaves the screen.
+   * @param ev Event arguments.
+   */
+  override onWillDisappear(ev: WillDisappearEvent<LibraryDialSettings>): void {
+    this.#drawn.delete(ev.action.id);
+
+    // `actions` still includes the departing dial at this point, hence the count of one.
+    if (this.#listening && [...this.actions].length <= 1) {
+      this.#listening = false;
+      removeStatusListener(this.#onPoll);
+    }
+  }
+
+  /**
+   * Repaints every visible dial, called on each poll of the shared status monitor.
+   */
+  async #redrawAll(): Promise<void> {
+    for (const target of this.actions) {
+      if (!target.isDial()) {
+        continue;
+      }
+
+      const settings = await target.getSettings<LibraryDialSettings>();
+      await this.#draw(target, settings);
+    }
   }
 
   /**
@@ -211,28 +295,80 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * @param cursor Position within it.
    */
   async #paint(
-    target: { setFeedback(feedback: Record<string, unknown>): Promise<void> },
+    target: DialTarget,
     settings: LibraryDialSettings,
     games: SteamGame[],
     cursor: number,
   ): Promise<void> {
     const game = games[cursor]!;
 
+    const state = (await getAppStates()).get(game.appId);
+    const badge = badgeFor(settings.showStatus !== false, state);
+
+    const position = await this.#position(settings, game, cursor, games.length, badge);
+
+    // The poll fires every few seconds whether or not anything moved; sending an unchanged frame
+    // every time would burn a render and a round trip per dial for nothing. The clock is part of
+    // the signature, so a running game still ticks.
+    const signature = `${game.appId}:${badge}:${position.value}:${settings.artStyle}:${settings.artFit}`;
+    if (this.#drawn.get(target.id) === signature) {
+      return;
+    }
+
     const art = await renderStripImage(
       game.appId,
       settings.artStyle ?? DEFAULT_STYLE,
       settings.artFit ?? DEFAULT_FIT,
       ART_SIZE,
+      badge,
     );
+
+    this.#drawn.set(target.id, signature);
 
     // `name` rather than `title`: a layout item keyed "title" is special-cased by Stream Deck to
     // follow the action's own title settings, so a profile that ships with titles switched off
     // hides the game's name entirely. Its own key keeps that out of the profile's hands.
-    await target.setFeedback({
-      art,
-      name: game.name,
-      position: `${cursor + 1} / ${games.length}`,
-    });
+    // A layout item can be handed a whole definition rather than just a string, which is how the
+    // clock gets its own colour without a second item; the layout has no room for one, and items
+    // are not allowed to overlap.
+    await target.setFeedback({ art, name: game.name, position });
+  }
+
+  /**
+   * The line under the name: where the cursor sits, and how long the game on show has been open
+   * when that game is the one running.
+   *
+   * The clock only appears for the game the dial is actually showing, the same rule the keys
+   * follow. A dial parked elsewhere in the library does not report someone else's session.
+   * @param settings The dial's settings.
+   * @param game The game on show.
+   * @param cursor Its position in the library.
+   * @param total Size of the library.
+   * @param badge What the art is framed with, so an idle game skips the lookup entirely.
+   * @returns The line to draw.
+   */
+  async #position(
+    settings: LibraryDialSettings,
+    game: SteamGame,
+    cursor: number,
+    total: number,
+    badge: StatusBadge,
+  ): Promise<{ value: string; color: string; font: { size: number; weight: number } }> {
+    const place = { value: `${cursor + 1} / ${total}`, ...PLACE_STYLE };
+
+    if (badge !== "running" || settings.showPlayTime === false) {
+      return place;
+    }
+
+    const running = await getRunningGame();
+    if (running?.game.appId !== game.appId || running.since === undefined) {
+      return place;
+    }
+
+    // The clock replaces the position rather than sharing the line with it. There is one row to
+    // work with, and at a size worth reading only one of the two fits; of the pair, where you are
+    // in the library is the one the art already tells you.
+    return { value: formatElapsed(Date.now() - running.since), ...CLOCK_STYLE };
   }
 
   /**
@@ -240,7 +376,12 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * and looking broken.
    * @param target The dial to draw on.
    */
-  async #drawEmpty(target: { setFeedback(feedback: Record<string, unknown>): Promise<void> }): Promise<void> {
+  async #drawEmpty(target: DialTarget): Promise<void> {
+    if (this.#drawn.get(target.id) === EMPTY) {
+      return;
+    }
+
+    this.#drawn.set(target.id, EMPTY);
     await target.setFeedback({ art: undefined, name: "No games found", position: "" });
   }
 }
