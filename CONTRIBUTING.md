@@ -45,14 +45,14 @@ Grid sizes below come straight from the installed SDK
 
 | `DeviceType` | Device | Keys / layout | Status |
 |---|---|---|---|
-| `0` | Stream Deck (original / MK2) | 15 keys, 5x3 | Has a profile |
-| `1` | Stream Deck Mini | 6 keys, 3x2 | Missing, high priority |
-| `2` | Stream Deck XL | 32 keys, 8x4 | Has a profile |
-| `9` | Stream Deck Neo | 8 keys (4x2) + touch strip | Missing, high priority |
-| `7` | Stream Deck + | 8 keys (4x2) + 4 dials + touch strip | Has a profile |
-| `10` | Stream Deck Studio | 32 keys, 16x2, + 2 dials | Missing, optional |
-| `13` | Stream Deck + XL | 36 keys, 9x4, + 6 dials + touch strip | Has a profile |
-| `12` | Galleon 100 SD (gaming keyboard) | 12 keys, 3x4, + screen + 2 dials | Missing, low priority |
+| `0` | Stream Deck (original / MK2) | 15 keys, 5x3 | ✅ Has a profile |
+| `1` | Stream Deck Mini | 6 keys, 3x2 | ❌ Missing, high priority |
+| `2` | Stream Deck XL | 32 keys, 8x4 | ✅ Has a profile |
+| `9` | Stream Deck Neo | 8 keys (4x2) + touch strip | ❌ Missing, high priority |
+| `7` | Stream Deck + | 8 keys (4x2) + 4 dials + touch strip | ✅ Has a profile |
+| `10` | Stream Deck Studio | 32 keys, 16x2, + 2 dials | ❌ Missing, optional |
+| `13` | Stream Deck + XL | 36 keys, 9x4, + 6 dials + touch strip | ✅ Has a profile |
+| `12` | Galleon 100 SD (gaming keyboard) | 12 keys, 3x4, + screen + 2 dials | ❌ Missing, low priority |
 | `3` | Stream Deck Mobile | iOS/Android app, no fixed grid | See "Mobile and Virtual" note |
 | `11` | Virtual Stream Deck | configurable canvas, up to 8x8 | See "Mobile and Virtual" note |
 | `5` | Stream Deck Pedal | 3 pedals, no screen | Not applicable |
