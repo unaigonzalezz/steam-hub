@@ -194,6 +194,13 @@
       "Readonly": false,
       "DontAutoSwitchWhenInstalled": true,
       "AutoInstall": true
+    }.
+    {
+      "Name": "Steam Hub + XL",
+      "DeviceType": 13,
+      "Readonly": false,
+      "DontAutoSwitchWhenInstalled": true,
+      "AutoInstall": true
     }
   ],
   "Nodejs": {
