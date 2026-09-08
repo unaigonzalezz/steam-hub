@@ -9,9 +9,7 @@
       "Icon": "imgs/actions/launch/icon",
       "Tooltip": "Launches a Steam game and shows its store art on the key.",
       "PropertyInspectorPath": "ui/launch-game.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/launch/key",
@@ -25,9 +23,7 @@
       "Icon": "imgs/actions/random/icon",
       "Tooltip": "Launches one of your installed games at random.",
       "PropertyInspectorPath": "ui/random-game.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/random/key",
@@ -41,9 +37,7 @@
       "Icon": "imgs/actions/slot/icon",
       "Tooltip": "Shows the installed game at a given position, so a whole profile lists your library.",
       "PropertyInspectorPath": "ui/show-installed.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/slot/key",
@@ -59,9 +53,7 @@
       "Icon": "imgs/actions/shortcut/icon",
       "Tooltip": "Opens Big Picture, your library, downloads, and other parts of Steam.",
       "PropertyInspectorPath": "ui/steam-shortcut.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/shortcut/key",
@@ -75,9 +67,7 @@
       "Icon": "imgs/actions/status/icon",
       "Tooltip": "Sets your Steam status to online, away, invisible, or offline.",
       "PropertyInspectorPath": "ui/steam-status.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/status/key",
@@ -91,9 +81,7 @@
       "Icon": "imgs/actions/nowplaying/icon",
       "Tooltip": "Shows whichever installed game is currently running, and opens its Community Hub when pressed.",
       "PropertyInspectorPath": "ui/now-playing.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/nowplaying/key",
@@ -107,9 +95,7 @@
       "Icon": "imgs/actions/playtimer/icon",
       "Tooltip": "Counts up while a game is running, and opens its Community Hub when pressed.",
       "PropertyInspectorPath": "ui/play-timer.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/playtimer/key",
@@ -125,9 +111,7 @@
       "Icon": "imgs/actions/gamepage/icon",
       "Tooltip": "Opens one game's store page, Community Hub, or uninstall dialog.",
       "PropertyInspectorPath": "ui/game-page.html",
-      "Controllers": [
-        "Keypad"
-      ],
+      "Controllers": ["Keypad"],
       "States": [
         {
           "Image": "imgs/actions/gamepage/key",
@@ -141,9 +125,7 @@
       "Icon": "imgs/actions/slot/dialIcon",
       "Tooltip": "Turn to browse your installed games, press to launch, tap to open the Steam page.",
       "PropertyInspectorPath": "ui/library-dial.html",
-      "Controllers": [
-        "Encoder"
-      ],
+      "Controllers": ["Encoder"],
       "Encoder": {
         "layout": "layouts/library-dial.json",
         "StackColor": "#1b2838",
@@ -194,7 +176,7 @@
       "Readonly": false,
       "DontAutoSwitchWhenInstalled": true,
       "AutoInstall": true
-    }.
+    },
     {
       "Name": "Steam Hub + XL",
       "DeviceType": 13,
@@ -202,7 +184,7 @@
       "DontAutoSwitchWhenInstalled": true,
       "AutoInstall": true
     },
-{
+    {
       "Name": "Steam Hub XL",
       "DeviceType": 2,
       "Readonly": false,
