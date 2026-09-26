@@ -1,6 +1,7 @@
 import { DeviceType } from "@elgato/streamdeck";
 
 import { pluginPath, renderImageFile, type StatusBadge } from "../steam/artwork";
+import { getInstalledGames, getInstallingGames, sortGames, type SortOrder } from "../steam/library";
 
 /**
  * Name of the profile shipped with this plugin, keyed by the device type it targets, as declared
@@ -128,6 +129,53 @@ export function badgeFor(enabled: boolean, state: { running: boolean; updating: 
   }
 
   return state.running ? "running" : "idle";
+}
+
+/**
+ * One entry in a library listing that may include a game still downloading for the first time,
+ * alongside the already-installed library. Both a numbered key grid and a scrolling dial need
+ * exactly this list, so it is built once here rather than twice.
+ */
+export type LibrarySlot = {
+  appId: string;
+  name: string;
+
+  /** Whether this is a first install still in progress, rather than a launchable game. */
+  installing: boolean;
+
+  /** Download progress in `[0, 1]`, when known. Only ever set while `installing` is `true`. */
+  fraction?: number;
+};
+
+/**
+ * Builds the combined list a library-browsing action numbers or scrolls through: games installing
+ * for the first time up front, followed by the already-installed library in the requested order.
+ *
+ * Installing entries sit ahead of the sorted list rather than interleaved into it: it is the only
+ * way to make a game with no real place in `sortOrder` yet, no final size, no play history, show up
+ * at all. That does shift every already-installed slot down for as long as something is installing,
+ * which is why `includeInstalling` exists as an opt-out.
+ * @param sortOrder How the already-installed part of the list is ordered.
+ * @param includeInstalling Whether first installs in progress get a slot at all.
+ * @returns The combined list.
+ */
+export async function librarySlots(sortOrder: SortOrder, includeInstalling: boolean): Promise<LibrarySlot[]> {
+  const installing: LibrarySlot[] = includeInstalling
+    ? (await getInstallingGames()).map((game) => ({
+        appId: game.appId,
+        name: game.name,
+        installing: true,
+        fraction: game.fraction,
+      }))
+    : [];
+
+  const installed: LibrarySlot[] = sortGames(await getInstalledGames(), sortOrder).map((game) => ({
+    appId: game.appId,
+    name: game.name,
+    installing: false,
+  }));
+
+  return [...installing, ...installed];
 }
 
 /**

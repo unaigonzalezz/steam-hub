@@ -10,13 +10,26 @@ import streamDeck, {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { type ArtFit, type ArtStyle, renderEmptyKey, renderKeyImage, type StatusBadge } from "../steam/artwork";
+import { checkForNewAchievement, type LatestAchievement } from "../steam/achievements";
+import { type ArtFit, type ArtStyle, renderAchievementKey, renderEmptyKey, renderKeyImage, type StatusBadge } from "../steam/artwork";
 import { launchGame, openSteamUrl } from "../steam/launch";
-import { getInstalledGames, sortGames, type SortOrder, type SteamGame } from "../steam/library";
+import { getDownloadFraction, type SortOrder } from "../steam/library";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { getRunningGame } from "../steam/running";
 import { getAppStates } from "../steam/status";
-import { badgeFor, formatElapsed, type GamePagePage, profileFor, steamPageUrl, wrapTitle } from "./common";
+import {
+  badgeFor,
+  formatElapsed,
+  type GamePagePage,
+  librarySlots,
+  type LibrarySlot,
+  profileFor,
+  steamPageUrl,
+  wrapTitle,
+} from "./common";
+
+/** How long a key takes over to show a just-unlocked achievement before returning to its own art. */
+const FLASH_MS = 3_000;
 
 /**
  * Per-key settings for {@link ShowInstalled}: just the slot this key stands for.
@@ -45,6 +58,13 @@ type SharedSettings = {
 
   /** Whether the key currently running a game also shows how long it has been open. */
   showPlayTime?: boolean;
+
+  /**
+   * Whether a game downloading for the first time gets a temporary slot at the front of the list,
+   * filling with the amber "updating" ring as it goes. Shifts every other slot down by one for as
+   * long as it is there; turning this off keeps slot numbers stable instead. Defaults to on.
+   */
+  showInstalling?: boolean;
 
   /** Absolute path to an image shown on positions with no game behind them. */
   emptyImage?: string;
@@ -90,6 +110,13 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
   readonly #pressTimers = new Map<string, NodeJS.Timeout>();
 
   /**
+   * Timers for keys currently taken over to show a just-unlocked achievement. A key's presence here,
+   * not just its signature, is what {@link ShowInstalled.#draw} checks to skip repainting it with its
+   * normal art while the takeover is still showing.
+   */
+  readonly #flashTimers = new Map<string, NodeJS.Timeout>();
+
+  /**
    * Initialises the action, and starts watching the settings its keys share.
    */
   constructor() {
@@ -126,6 +153,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
   override onWillDisappear(ev: WillDisappearEvent<SlotSettings>): void {
     this.#drawn.delete(ev.action.id);
     this.#cancelPress(ev.action.id);
+    this.#cancelFlash(ev.action.id);
 
     // `actions` still includes the departing key at this point, hence the count of one.
     if (this.#listening && [...this.actions].length <= 1) {
@@ -201,17 +229,22 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    * @param settings The key's settings.
    */
   async #launch(target: KeyAction<SlotSettings>, settings: SlotSettings): Promise<void> {
-    const game = await this.#gameFor(settings);
+    const slot = await this.#slotFor(settings);
 
-    if (game === undefined) {
+    if (slot === undefined) {
       return; // a numbered slot with no game is not a broken key, so it stays silent
     }
 
+    if (slot.installing) {
+      await target.showAlert(); // still downloading, nothing to launch yet
+      return;
+    }
+
     try {
-      await launchGame(game.appId);
+      await launchGame(slot.appId);
       await target.showOk();
     } catch (err) {
-      streamDeck.logger.error(`Could not launch ${game.name}`, err);
+      streamDeck.logger.error(`Could not launch ${slot.name}`, err);
       await target.showAlert();
     }
   }
@@ -224,17 +257,22 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    * @param page Page to open.
    */
   async #openPage(target: KeyAction<SlotSettings>, settings: SlotSettings, page: GamePagePage): Promise<void> {
-    const game = await this.#gameFor(settings);
+    const slot = await this.#slotFor(settings);
 
-    if (game === undefined) {
+    if (slot === undefined) {
       return; // a numbered slot with no game is not a broken key, so it stays silent
     }
 
+    if (slot.installing) {
+      await target.showAlert(); // still downloading, nothing to open a page for yet
+      return;
+    }
+
     try {
-      await openSteamUrl(steamPageUrl(page, game.appId));
+      await openSteamUrl(steamPageUrl(page, slot.appId));
       await target.showOk();
     } catch (err) {
-      streamDeck.logger.error(`Could not open the ${page} page for ${game.name}`, err);
+      streamDeck.logger.error(`Could not open the ${page} page for ${slot.name}`, err);
       await target.showAlert();
     }
   }
@@ -261,6 +299,8 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    * shared settings change.
    */
   async #redrawAll(): Promise<void> {
+    await this.#checkForUnlock();
+
     await Promise.all(
       [...this.actions].map(async (target) => {
         if (target.isKey()) {
@@ -271,20 +311,95 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
   }
 
   /**
-   * Resolves the game a key stands for.
-   * @param settings The key's settings.
-   * @returns The game at that index, or `undefined` when the slot is empty.
+   * Checks whether the running game just unlocked a new achievement and, when a visible key happens
+   * to be showing that game right now, takes it over to announce it.
+   *
+   * Only the running game is ever checked, the same game {@link NowPlaying} and co. follow, since
+   * checking every installed game on every poll would mean reading two files per game, a whole
+   * library's worth, four times a minute for no benefit: a game that is not running cannot have just
+   * unlocked anything.
    */
-  async #gameFor(settings: SlotSettings): Promise<SteamGame | undefined> {
+  async #checkForUnlock(): Promise<void> {
+    const running = await getRunningGame();
+    if (running === undefined) {
+      return;
+    }
+
+    const achievement = await checkForNewAchievement(running.game.appId);
+    if (achievement === undefined) {
+      return;
+    }
+
+    for (const target of this.actions) {
+      if (!target.isKey()) {
+        continue;
+      }
+
+      const slot = await this.#slotFor(await target.getSettings());
+      if (slot?.appId === running.game.appId) {
+        await this.#startFlash(target, running.game.appId, achievement);
+      }
+    }
+  }
+
+  /**
+   * Takes a key over for {@link FLASH_MS}, showing the achievement that was just unlocked in place
+   * of whatever game it normally displays, then restores the normal art on its own.
+   * @param target Key to take over.
+   * @param appId Steam application id the achievement belongs to.
+   * @param achievement Achievement to show.
+   */
+  async #startFlash(target: KeyAction<SlotSettings>, appId: string, achievement: LatestAchievement): Promise<void> {
+    this.#cancelFlash(target.id);
+
+    const image = await renderAchievementKey(appId, achievement.icon);
+    await target.setImage(image);
+    await target.setTitle(wrapTitle(achievement.name));
+    this.#drawn.set(target.id, `flash:${appId}:${achievement.icon}`);
+
+    this.#flashTimers.set(
+      target.id,
+      setTimeout(() => {
+        this.#flashTimers.delete(target.id);
+        this.#drawn.delete(target.id); // forces #draw to actually repaint once it stops skipping this key
+
+        void target
+          .getSettings()
+          .then((settings) => this.#draw(target, settings))
+          .catch((err) => streamDeck.logger.error(`Could not restore ${target.id} after an achievement flash`, err));
+      }, FLASH_MS),
+    );
+  }
+
+  /**
+   * Cancels a key's pending flash timer, if it has one. Used both when a new flash pre-empts an
+   * older one still showing, and when the key leaves the screen mid-flash.
+   * @param actionId Id of the key, i.e. {@link KeyAction.id}.
+   */
+  #cancelFlash(actionId: string): void {
+    const timer = this.#flashTimers.get(actionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#flashTimers.delete(actionId);
+    }
+  }
+
+  /**
+   * Resolves the slot a key stands for: a launchable game, a first install still downloading, or
+   * nothing at all.
+   * @param settings The key's settings.
+   * @returns The slot at that index, or `undefined` when the position is unset or past the end.
+   */
+  async #slotFor(settings: SlotSettings): Promise<LibrarySlot | undefined> {
     const index = parseIndex(settings);
     if (index === undefined) {
       return undefined;
     }
 
     const shared = await getShared();
-    const games = sortGames(await getInstalledGames(), shared.sortOrder ?? DEFAULT_SHARED.sortOrder);
+    const slots = await librarySlots(shared.sortOrder ?? DEFAULT_SHARED.sortOrder, shared.showInstalling !== false);
 
-    return games[index - 1]; // 1-based, so the numbers on the keys read the way people count
+    return slots[index - 1]; // 1-based, so the numbers on the keys read the way people count
   }
 
   /**
@@ -297,6 +412,10 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       return; // the manifest only offers this action on keypads
     }
 
+    if (this.#flashTimers.has(target.id)) {
+      return; // a just-unlocked achievement is taking this key over; its own timer restores the normal art
+    }
+
     // No position typed in yet: leave the action's own icon showing, so a key dragged onto the
     // device reads as "configure me" rather than as a slot that happens to be empty.
     if (parseIndex(settings) === undefined) {
@@ -304,38 +423,76 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       return;
     }
 
-    const game = await this.#gameFor(settings);
     const shared = await getShared();
+    const slot = await this.#slotFor(settings);
 
-    if (game === undefined) {
+    if (slot === undefined) {
       // A real position with nothing behind it, that is what the empty plate is for.
       await this.#paint(target, `empty:${shared.emptyImage ?? ""}`, await renderEmptyKey(shared.emptyImage), "");
       return;
     }
 
-    const state = (await getAppStates()).get(game.appId);
+    if (slot.installing) {
+      await this.#drawInstalling(target, slot, shared);
+      return;
+    }
+
+    const state = (await getAppStates()).get(slot.appId);
     const badge: StatusBadge = badgeFor(shared.showStatus !== false, state);
     const style = shared.artStyle ?? DEFAULT_SHARED.artStyle;
+
+    // Only worth the extra file read when there is actually a ring to fill in.
+    const fraction = badge === "updating" ? await getDownloadFraction(slot.appId) : undefined;
 
     const image =
       style === "none"
         ? await renderEmptyKey(shared.emptyImage)
-        : await renderKeyImage(game.appId, style, shared.artFit ?? DEFAULT_SHARED.artFit, badge);
+        : await renderKeyImage(slot.appId, style, shared.artFit ?? DEFAULT_SHARED.artFit, badge, fraction);
 
     // Fetching who is running is a bit of extra work, so it only happens for a key whose own game
     // is actually running and only when the setting asks for it, never for the other thirty-one.
     const elapsed =
-      shared.showPlayTime === true && state?.running === true ? await elapsedSince(game.appId) : undefined;
+      shared.showPlayTime === true && state?.running === true ? await elapsedSince(slot.appId) : undefined;
 
-    const nameTitle = shared.showTitle === true || style === "none" ? wrapTitle(game.name, elapsed ? 2 : 3) : "";
+    const nameTitle = shared.showTitle === true || style === "none" ? wrapTitle(slot.name, elapsed ? 2 : 3) : "";
     const title = elapsed === undefined ? nameTitle : nameTitle === "" ? elapsed : `${nameTitle}\n${elapsed}`;
+    const percent = fraction === undefined ? "-" : Math.round(fraction * 100);
 
     await this.#paint(
       target,
-      `${game.appId}:${style}:${badge}:${title}`,
+      `${slot.appId}:${style}:${badge}:${percent}:${title}`,
       image ?? (await renderEmptyKey(shared.emptyImage)),
       title,
     );
+  }
+
+  /**
+   * Paints a key for a game whose first install is still in progress: the same amber ring the
+   * "updating" badge draws, filled to its actual download fraction instead of solid, since there is
+   * no launchable game behind the slot yet.
+   * @param target Key to draw on.
+   * @param slot The installing entry.
+   * @param shared Shared settings, already read by the caller.
+   */
+  async #drawInstalling(target: KeyAction<SlotSettings>, slot: LibrarySlot, shared: SharedSettings): Promise<void> {
+    const percent = slot.fraction === undefined ? undefined : Math.round(slot.fraction * 100);
+    const signature = `installing:${slot.appId}:${percent}`;
+
+    if (this.#drawn.get(target.id) === signature) {
+      return;
+    }
+
+    const style = shared.artStyle ?? DEFAULT_SHARED.artStyle;
+    const image =
+      style === "none"
+        ? await renderEmptyKey(shared.emptyImage)
+        : ((await renderKeyImage(slot.appId, style, shared.artFit ?? DEFAULT_SHARED.artFit, "updating", slot.fraction)) ??
+          (await renderEmptyKey(shared.emptyImage)));
+
+    const nameTitle = wrapTitle(slot.name, 2);
+    const title = percent === undefined ? nameTitle : `${nameTitle}\n${percent}%`;
+
+    await this.#paint(target, signature, image, title);
   }
 
   /**

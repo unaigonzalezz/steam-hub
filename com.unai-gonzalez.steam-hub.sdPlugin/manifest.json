@@ -49,7 +49,7 @@
           "Image": "imgs/actions/slot/key",
           "TitleAlignment": "middle",
           "FontFamily": "Arial Black",
-          "FontSize": 15
+          "FontSize": 18
         }
       ]
     },
@@ -116,6 +116,22 @@
           "TitleAlignment": "middle",
           "FontFamily": "Arial Black",
           "FontSize": 15
+        }
+      ]
+    },
+    {
+      "Name": "Last achievement",
+      "UUID": "com.unai-gonzalez.steam-hub.lastachievement",
+      "Icon": "imgs/actions/lastachievement/icon",
+      "Tooltip": "Shows the most recently unlocked achievement in whichever installed game is currently running, and opens its Community Hub when pressed.",
+      "PropertyInspectorPath": "ui/last-achievement.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/lastachievement/key",
+          "TitleAlignment": "middle"
         }
       ]
     },

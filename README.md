@@ -89,6 +89,14 @@ There's no game to pick here, the key just follows Steam: it always shows whiche
 
 A stopwatch key with no game to configure either. It counts up for as long as a game is running, resets once it closes, and opens that game's Community Hub when pressed.
 
+### Last Achievement
+
+No game to pick here either, the key follows whatever Steam currently has open and shows the icon of the most recently unlocked achievement in that game. Pressing it opens that game's Community Hub, same as Now Playing and Play Timer.
+
+Read entirely from Steam's own local stat cache, so it needs no Steam Web API key. That also means it only knows about a game once Steam has fetched its stats locally, launching it once is enough, and it stays idle until something has actually unlocked.
+
+Unlocking one while **Show Installed Games** is on screen also takes over that game's own key for 3 seconds, showing the achievement instead of the usual art before switching back on its own, so you catch it even without a Last Achievement key configured.
+
 ### Game Page
 
 Opens one specific game's store page, Community Hub, or uninstall dialog, using the same game picker as Launch Game. Since the key always labels itself by page rather than by game name, you can line up several of these side by side for the same game, store page, hub, uninstall, and still tell them apart at a glance.

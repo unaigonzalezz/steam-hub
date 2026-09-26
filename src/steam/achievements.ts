@@ -1,0 +1,258 @@
+import streamDeck from "@elgato/streamdeck";
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+
+import { getObject, getString, parseBinVdf, type BinVdfObject } from "./binvdf";
+import { findSteam } from "./paths";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * The most recently unlocked achievement in one game, for whoever is currently logged into Steam.
+ */
+export type LatestAchievement = {
+  /** Localized display name. */
+  name: string;
+
+  /** Localized description. */
+  description: string;
+
+  /** Icon filename from the achievement schema, resolved against Steam's public image CDN. */
+  icon: string;
+
+  /** When it unlocked, in epoch milliseconds. */
+  unlockedAt: number;
+};
+
+const APP_ID = /^\d{1,10}$/;
+
+/** How long a resolved account id is trusted before being re-read from the registry. */
+const ACCOUNT_TTL = 5 * 60_000;
+
+let accountCache: { at: number; id: string | undefined } | undefined;
+
+/**
+ * Resolves the account id (the 32-bit SteamID3 form) of whoever is currently logged into the local
+ * Steam client. This is the id `appcache/stats` filenames carry, not the full 64-bit SteamID, and
+ * it is what lets a shared machine's stat cache be matched to the account actually signed in.
+ * @returns The account id, or `undefined` when nobody is signed in, or off Windows.
+ */
+async function getActiveAccountId(): Promise<string | undefined> {
+  if (process.platform !== "win32") {
+    return undefined; // the registry key this reads is Windows-only
+  }
+
+  if (accountCache !== undefined && Date.now() - accountCache.at < ACCOUNT_TTL) {
+    return accountCache.id;
+  }
+
+  let id: string | undefined;
+  try {
+    const { stdout } = await execFileAsync(
+      "reg",
+      ["query", "HKCU\\Software\\Valve\\Steam\\ActiveProcess", "/v", "ActiveUser"],
+      { windowsHide: true, timeout: 5_000 },
+    );
+
+    const match = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout);
+    const value = match !== null ? Number.parseInt(match[1]!, 16) : 0;
+    id = value > 0 ? String(value) : undefined;
+  } catch {
+    id = undefined; // Steam not installed, not signed in, or the key is otherwise unreadable
+  }
+
+  accountCache = { at: Date.now(), id };
+  return id;
+}
+
+/**
+ * How long a resolved achievement is trusted. Short enough that unlocking one while the key is on
+ * screen shows up within a poll or two, long enough that several keys following the same running
+ * game share one pair of file reads.
+ */
+const CACHE_TTL = 8_000;
+
+type Entry = { at: number; achievement: LatestAchievement | undefined };
+
+const cache = new Map<string, Entry>();
+const inFlight = new Map<string, Promise<LatestAchievement | undefined>>();
+
+/**
+ * Resolves the most recently unlocked achievement in one game, for the currently signed-in account.
+ *
+ * Reads Steam's own local stat cache under `appcache/stats` rather than the Web API, so this needs
+ * no API key: `UserGameStatsSchema_<appId>.bin` names and describes every achievement, bit by bit,
+ * and `UserGameStats_<accountId>_<appId>.bin` records when each one unlocked. Both are populated by
+ * the Steam client itself, only once it has actually fetched that game's stats, typically the first
+ * time it is launched or its achievements page is opened, so a game never played this way resolves
+ * to `undefined` even if it does have achievements.
+ * @param appId Steam application id.
+ * @returns The latest achievement, or `undefined` when none has unlocked yet, or nothing could be read.
+ */
+export async function getLatestAchievement(appId: string): Promise<LatestAchievement | undefined> {
+  if (!APP_ID.test(appId)) {
+    return undefined;
+  }
+
+  const cached = cache.get(appId);
+  if (cached !== undefined && Date.now() - cached.at < CACHE_TTL) {
+    return cached.achievement;
+  }
+
+  const existing = inFlight.get(appId);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const task = resolve(appId)
+    .catch((err) => {
+      streamDeck.logger.debug(`Could not resolve the latest achievement for app ${appId}`, err);
+      return undefined;
+    })
+    .finally(() => inFlight.delete(appId));
+
+  inFlight.set(appId, task);
+
+  const achievement = await task;
+  cache.set(appId, { at: Date.now(), achievement });
+
+  return achievement;
+}
+
+/** Per-app timestamp of the latest achievement {@link checkForNewAchievement} has already reported. */
+const lastReported = new Map<string, number>();
+
+/**
+ * Checks whether an app's latest achievement is one {@link checkForNewAchievement} has not already
+ * reported for it, so a caller polling this every few seconds learns about a fresh unlock exactly
+ * once, rather than on every poll for as long as it stays the latest.
+ *
+ * The first call for a given app only seeds the baseline and never itself reports one: without that,
+ * a game that already had achievements unlocked before the plugin started would flash the moment it
+ * was first polled, as if that old achievement had just happened.
+ * @param appId Steam application id.
+ * @returns The newly unlocked achievement, or `undefined` when there is nothing new to report.
+ */
+export async function checkForNewAchievement(appId: string): Promise<LatestAchievement | undefined> {
+  const achievement = await getLatestAchievement(appId);
+  if (achievement === undefined) {
+    return undefined;
+  }
+
+  const seen = lastReported.get(appId);
+  lastReported.set(appId, achievement.unlockedAt);
+
+  return seen !== undefined && achievement.unlockedAt > seen ? achievement : undefined;
+}
+
+/**
+ * Reads both stat files for one app and picks the achievement with the latest timestamp.
+ * @param appId Steam application id.
+ * @returns The latest achievement, or `undefined`.
+ */
+async function resolve(appId: string): Promise<LatestAchievement | undefined> {
+  const steam = await findSteam();
+  const accountId = await getActiveAccountId();
+  if (steam === undefined || accountId === undefined) {
+    return undefined;
+  }
+
+  const statsDir = path.join(steam.root, "appcache", "stats");
+  const [schema, stats] = await Promise.all([
+    readBinVdfFile(path.join(statsDir, `UserGameStatsSchema_${appId}.bin`)),
+    readBinVdfFile(path.join(statsDir, `UserGameStats_${accountId}_${appId}.bin`)),
+  ]);
+
+  // The schema's root block is keyed by the app id itself; the per-user file's is always "cache".
+  const schemaStats = getObject(getObject(schema, appId), "stats");
+  const statsCache = getObject(stats, "cache");
+  if (schemaStats === undefined || statsCache === undefined) {
+    return undefined;
+  }
+
+  let best: LatestAchievement | undefined;
+
+  for (const [groupId, group] of Object.entries(statsCache)) {
+    if (typeof group !== "object") {
+      continue; // "crc" and "PendingChanges" sit alongside the real per-stat groups
+    }
+
+    const times = getObject(group, "AchievementTimes");
+    const bits = getObject(getObject(schemaStats, groupId), "bits");
+    if (times === undefined || bits === undefined) {
+      continue; // a non-achievement stat group, or one the schema no longer lists
+    }
+
+    for (const [bit, when] of Object.entries(times)) {
+      const seconds = typeof when === "number" ? when : typeof when === "bigint" ? Number(when) : undefined;
+      if (seconds === undefined || seconds === 0) {
+        continue; // no recorded time, so it cannot be compared as "latest"
+      }
+
+      const unlockedAt = seconds * 1000;
+      if (best !== undefined && unlockedAt <= best.unlockedAt) {
+        continue;
+      }
+
+      const definition = getObject(bits, bit);
+      const display = getObject(definition, "display");
+      const icon = getString(display, "icon");
+      if (display === undefined || icon === undefined) {
+        continue;
+      }
+
+      best = {
+        name: localized(getObject(display, "name")) ?? getString(definition, "name") ?? `Achievement ${bit}`,
+        description: localized(getObject(display, "desc")) ?? "",
+        icon,
+        unlockedAt,
+      };
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Picks a display string out of a `display.name` / `display.desc` block, which holds one entry per
+ * language. English first since it is what every schema carries, then whatever comes first, rather
+ * than nothing at all when English is missing.
+ * @param names Localized strings, keyed by language.
+ * @returns The chosen string, or `undefined` when the block is empty.
+ */
+function localized(names: BinVdfObject | undefined): string | undefined {
+  if (names === undefined) {
+    return undefined;
+  }
+
+  const english = getString(names, "english");
+  if (english !== undefined && english !== "") {
+    return english;
+  }
+
+  for (const value of Object.values(names)) {
+    if (typeof value === "string" && value !== "") {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Reads and parses a binary VDF file, treating any failure, missing file included, as "not there".
+ * @param file Absolute path to the file.
+ * @returns The parsed root object, or `undefined`.
+ */
+async function readBinVdfFile(file: string): Promise<BinVdfObject | undefined> {
+  try {
+    return parseBinVdf(await readFile(file));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      streamDeck.logger.debug(`Could not parse ${file}`, err);
+    }
+    return undefined;
+  }
+}

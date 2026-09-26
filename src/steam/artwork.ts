@@ -81,6 +81,12 @@ const CDN_HOSTS = [
   "https://cdn.akamai.steamstatic.com/steam/apps",
 ];
 
+/** Same CDN, different tree: achievement icons live under the community image path, not `steam/apps`. */
+const ACHIEVEMENT_CDN_HOSTS = [
+  "https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps",
+  "https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps",
+];
+
 /**
  * The slice of Jimp's surface this module uses.
  *
@@ -152,6 +158,12 @@ const STATUS_COLOURS = {
 const BORDER_WIDTH = 11;
 
 /**
+ * How dark the unfilled part of a progress ring's track is, relative to the badge colour, so a
+ * download barely started still shows a full ring rather than a bare sliver.
+ */
+const TRACK_BRIGHTNESS = 0.3;
+
+/**
  * Corner radius of the border's inner edge.
  *
  * Stream Deck rounds the key itself, so a square hole inside a square frame reads as a mismatch.
@@ -177,6 +189,8 @@ export type StatusBadge = "idle" | "running" | "updating";
  * @param style Which art to use.
  * @param fit How to fit it into the key.
  * @param badge Status border to draw around the art.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`; only meaningful, and only
+ * drawn, when `badge` is `"updating"`. `undefined` falls back to the plain solid ring.
  * @returns A `data:` URI, or `undefined` when no art could be found.
  */
 async function renderSized(
@@ -185,14 +199,17 @@ async function renderSized(
   fit: ArtFit,
   badge: StatusBadge,
   size: Size,
+  progress: number | undefined,
 ): Promise<string | undefined> {
   if (style === "none" || !/^\d{1,10}$/.test(appId)) {
     return undefined;
   }
 
   // Size belongs in the key: the same art at key size and at strip size are different images,
-  // and leaving it out hands whichever asked first to whoever asks second.
-  const key = `${appId}:${style}:${fit}:${badge}:${size.w}x${size.h}`;
+  // and leaving it out hands whichever asked first to whoever asks second. Progress is bucketed to
+  // a whole percent so a fraction that barely moved between polls does not miss the cache.
+  const progressKey = progress === undefined ? "-" : Math.round(progress * 100);
+  const key = `${appId}:${style}:${fit}:${badge}:${size.w}x${size.h}:${progressKey}`;
   const cached = rendered.get(key);
   if (cached !== undefined) {
     return cached;
@@ -203,7 +220,7 @@ async function renderSized(
     return existing;
   }
 
-  const task = render(appId, style, fit, badge, size)
+  const task = render(appId, style, fit, badge, size, progress)
     .catch((err) => {
       streamDeck.logger.error(`Failed to render artwork for app ${appId}`, err);
       return undefined;
@@ -229,6 +246,7 @@ async function renderSized(
  * @param style Which art to use.
  * @param fit How to fit it into the key.
  * @param badge Status border to draw around the art.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`; see {@link renderSized}.
  * @returns A `data:` URI, or `undefined` when no art could be found.
  */
 export function renderKeyImage(
@@ -236,8 +254,9 @@ export function renderKeyImage(
   style: ArtStyle,
   fit: ArtFit,
   badge: StatusBadge = "idle",
+  progress?: number,
 ): Promise<string | undefined> {
-  return renderSized(appId, style, fit, badge, KEY);
+  return renderSized(appId, style, fit, badge, KEY, progress);
 }
 
 /**
@@ -252,6 +271,7 @@ export function renderKeyImage(
  * @param fit How to fit it into the slot.
  * @param size Dimensions of the slot, matching the `rect` of the layout item it fills.
  * @param badge Status border to draw around the art, scaled to the slot.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`; see {@link renderSized}.
  * @returns A `data:` URI, or `undefined` when no art could be found.
  */
 export function renderStripImage(
@@ -260,8 +280,9 @@ export function renderStripImage(
   fit: ArtFit,
   size: Size,
   badge: StatusBadge = "idle",
+  progress?: number,
 ): Promise<string | undefined> {
-  return renderSized(appId, style, fit, badge, size);
+  return renderSized(appId, style, fit, badge, size, progress);
 }
 
 /**
@@ -389,6 +410,7 @@ function defaultEmptyKey(): Image {
  * @param style Which art to use.
  * @param fit How to fit it into the key.
  * @param badge Status border to draw around the art.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`; see {@link renderSized}.
  * @returns A `data:` URI, or `undefined` when the game has no art at all.
  */
 async function render(
@@ -397,13 +419,14 @@ async function render(
   fit: ArtFit,
   badge: StatusBadge,
   size: Size = KEY,
+  progress?: number,
 ): Promise<string | undefined> {
   if (style === "logo") {
     const logo = await loadArt(appId, "logo");
     if (logo !== undefined) {
       // A logo is a transparent wordmark: it always sits over a backdrop, never cropped.
       const backdrop = await loadFirst(appId, ["hero", "header", "capsule"]);
-      return compose(logo, backdrop, "fit", 0.84, 0.42, badge, `${appId}-logo-${badge}`, size);
+      return compose(logo, backdrop, "fit", 0.84, 0.42, badge, `${appId}-logo-${badge}`, size, progress);
     }
 
     // Not every app publishes a logo; a header reads better than an empty key.
@@ -424,8 +447,8 @@ async function render(
 
   const label = `${appId}-${style}-${fit}-${badge}`;
   return fit === "fill"
-    ? compose(art, undefined, "fill", 1, 1, badge, label, size)
-    : compose(art, art, "fit", 1, 0.55, badge, label, size);
+    ? compose(art, undefined, "fill", 1, 1, badge, label, size, progress)
+    : compose(art, art, "fit", 1, 0.55, badge, label, size, progress);
 }
 
 /**
@@ -438,6 +461,7 @@ async function render(
  * @param badge Status border to draw around the result.
  * @param label Short description of the result, passed through to {@link toDataUri}.
  * @param size Dimensions to composite at; a key by default.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`; see {@link renderSized}.
  * @returns A `data:` URI.
  */
 async function compose(
@@ -449,9 +473,10 @@ async function compose(
   badge: StatusBadge,
   label: string,
   size: Size = KEY,
+  progress?: number,
 ): Promise<string> {
   if (fit === "fill") {
-    return toDataUri(outline(decode(foreground).cover({ w: size.w, h: size.h }), badge), label);
+    return toDataUri(outline(decode(foreground).cover({ w: size.w, h: size.h }), badge, progress), label);
   }
 
   const canvas =
@@ -466,7 +491,7 @@ async function compose(
 
   canvas.composite(art, Math.round((size.w - art.width) / 2), Math.round((size.h - art.height) / 2));
 
-  return toDataUri(outline(canvas, badge), label);
+  return toDataUri(outline(canvas, badge, progress), label);
 }
 
 /**
@@ -476,15 +501,26 @@ async function compose(
  * doing it here keeps the border out of the blur and scaling that produced the art underneath.
  * @param image Image to frame.
  * @param badge Which border to draw; `idle` leaves the image untouched.
+ * @param progress Fraction of an update or install completed, in `[0, 1]`. Only ever used with
+ * `badge === "updating"`: instead of a solid ring, the border sweeps clockwise from the top, bright
+ * where progress has reached and dim ahead of it, like a clock face filling in. `undefined` (unknown
+ * size, or any other badge) draws the plain solid ring exactly as before.
  * @returns The same image, for chaining.
  */
-function outline(image: Image, badge: StatusBadge): Image {
+function outline(image: Image, badge: StatusBadge, progress?: number): Image {
   if (badge === "idle") {
     return image;
   }
 
   const [r, g, b] = STATUS_COLOURS[badge];
   const { data, width, height } = image.bitmap;
+
+  const sweep = badge === "updating" && progress !== undefined ? Math.min(1, Math.max(0, progress)) : undefined;
+  const dim: readonly [number, number, number] = [
+    Math.round(r * TRACK_BRIGHTNESS),
+    Math.round(g * TRACK_BRIGHTNESS),
+    Math.round(b * TRACK_BRIGHTNESS),
+  ];
 
   // Border weight is proportional to the image, not fixed, so the frame reads the same on an
   // encoder's touch strip as it does on a key. At key size this is exactly the old constants;
@@ -500,14 +536,43 @@ function outline(image: Image, badge: StatusBadge): Image {
   const right = width - inset;
   const bottom = height - inset;
 
+  // Centre and half-extents a swept pixel's angle is measured against. Normalising by these before
+  // taking the angle treats the ring as sitting on an ellipse inscribed in the image rather than a
+  // circle in raw pixels, which is what keeps the sweep looking even on a square key and on a much
+  // wider encoder strip alike: a raw pixel angle would spend almost the whole sweep crossing the
+  // two short top/bottom edges of a wide strip and barely any of it on the long sides.
+  const cx = width / 2;
+  const cy = height / 2;
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  /**
+   * Picks the colour for one border pixel: the badge colour when there is no sweep to draw, or
+   * when the sweep has reached this pixel's clockwise position; the dim track colour otherwise.
+   */
+  const colourAt = (x: number, y: number): readonly [number, number, number] => {
+    if (sweep === undefined) {
+      return [r, g, b];
+    }
+
+    // atan2's operands are swapped from the usual (y, x) so 0 points straight up rather than right,
+    // and negated on the y axis so increasing angle sweeps clockwise rather than counterclockwise.
+    const theta = Math.atan2((x - cx) / halfW, (cy - y) / halfH);
+    const fraction = theta < 0 ? theta / (2 * Math.PI) + 1 : theta / (2 * Math.PI);
+
+    return fraction <= sweep ? [r, g, b] : dim;
+  };
+
   for (let y = 0; y < height; y++) {
     // Rows clear of the corners are two straight runs, so they skip the sampling entirely.
     if (y >= top + radius && y < bottom - radius) {
       for (let x = 0; x < left; x++) {
-        paintBorder(data, width, x, y, r, g, b, 1);
+        const [cr, cg, cb] = colourAt(x, y);
+        paintBorder(data, width, x, y, cr, cg, cb, 1);
       }
       for (let x = right; x < width; x++) {
-        paintBorder(data, width, x, y, r, g, b, 1);
+        const [cr, cg, cb] = colourAt(x, y);
+        paintBorder(data, width, x, y, cr, cg, cb, 1);
       }
       continue;
     }
@@ -516,7 +581,8 @@ function outline(image: Image, badge: StatusBadge): Image {
       // Coverage of the border is whatever the rounded hole does not cover.
       const coverage = 1 - holeCoverage(x, y, left, top, right, bottom, radius);
       if (coverage > 0) {
-        paintBorder(data, width, x, y, r, g, b, coverage);
+        const [cr, cg, cb] = colourAt(x, y);
+        paintBorder(data, width, x, y, cr, cg, cb, coverage);
       }
     }
   }
@@ -770,10 +836,17 @@ function localArtDirectories(appId: string): Promise<string[]> {
  * Downloads art from Steam's CDN and caches it on disk for next time.
  * @param appId Steam application id.
  * @param name Asset filename.
+ * @param hosts CDN hosts to try, in order. Defaults to the game art tree.
+ * @param cacheName Filename to cache the result under. Defaults to `<appId>_<name>`.
  * @returns The image bytes, or `undefined` when the asset does not exist.
  */
-async function download(appId: string, name: string): Promise<Buffer | undefined> {
-  for (const host of CDN_HOSTS) {
+async function download(
+  appId: string,
+  name: string,
+  hosts: readonly string[] = CDN_HOSTS,
+  cacheName = `${appId}_${name}`,
+): Promise<Buffer | undefined> {
+  for (const host of hosts) {
     const url = `${host}/${appId}/${name}`;
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -786,7 +859,7 @@ async function download(appId: string, name: string): Promise<Buffer | undefined
         break; // an error page served with a 200
       }
 
-      await writeCache(`${appId}_${name}`, buffer);
+      await writeCache(cacheName, buffer);
       streamDeck.logger.debug(`Downloaded ${name} for app ${appId}`);
 
       return buffer;
@@ -797,6 +870,73 @@ async function download(appId: string, name: string): Promise<Buffer | undefined
   }
 
   return undefined;
+}
+
+/**
+ * Resolves one achievement's icon, preferring a copy already cached on disk from a previous render.
+ * @param appId Steam application id the achievement belongs to.
+ * @param icon Icon filename from the achievement schema.
+ * @returns The image bytes, or `undefined` when the icon could not be fetched.
+ */
+async function loadAchievementIcon(appId: string, icon: string): Promise<Buffer | undefined> {
+  const cacheName = `${appId}_achievement_${icon}`;
+
+  const cached = await readIfImage(path.join(await getCacheDir(), cacheName));
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  return download(appId, icon, ACHIEVEMENT_CDN_HOSTS, cacheName);
+}
+
+/**
+ * Renders an achievement's icon on a key, centred over a dark plate.
+ *
+ * Achievement icons are small, usually 64x64, so they are fit rather than covered the way store art
+ * is: stretching one edge to edge across a 144px key would make the compression blocks obvious.
+ *
+ * Results are memoised per `(app, icon)`, the same way {@link renderKeyImage} memoises store art.
+ * @param appId Steam application id the achievement belongs to.
+ * @param icon Icon filename from the achievement schema.
+ * @returns A `data:` URI, or `undefined` when the icon could not be fetched.
+ */
+export async function renderAchievementKey(appId: string, icon: string): Promise<string | undefined> {
+  if (!/^\d{1,10}$/.test(appId) || icon === "") {
+    return undefined;
+  }
+
+  const key = `achievement:${appId}:${icon}`;
+  const cached = rendered.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const existing = inFlight.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const task = (async (): Promise<string | undefined> => {
+    const bytes = await loadAchievementIcon(appId, icon);
+    return bytes === undefined ? undefined : compose(bytes, undefined, "fit", 0.62, 1, "idle", key, KEY);
+  })()
+    .catch((err) => {
+      streamDeck.logger.error(`Failed to render achievement icon for app ${appId}`, err);
+      return undefined;
+    })
+    .finally(() => inFlight.delete(key));
+
+  inFlight.set(key, task);
+
+  const image = await task;
+  if (image !== undefined) {
+    if (rendered.size >= MAX_CACHED_RENDERS) {
+      rendered.delete(rendered.keys().next().value!);
+    }
+    rendered.set(key, image);
+  }
+
+  return image;
 }
 
 /**

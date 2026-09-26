@@ -170,24 +170,20 @@ export function sortGames(games: SteamGame[], order: SortOrder): SteamGame[] {
  * @returns Installed games, sorted by name.
  */
 export async function listInstalledGames(): Promise<SteamGame[]> {
-  const steam = await findSteam();
-  if (steam === undefined) {
-    return [];
-  }
-
-  const libraries = await listLibraries(steam);
-  const perLibrary = await Promise.all(libraries.map((library) => readLibrary(library)));
+  const entries = await scanManifests();
 
   // The same app can appear twice if a library was copied rather than moved; first one wins.
   const games = new Map<string, SteamGame>();
-  for (const game of perLibrary.flat()) {
-    if (!games.has(game.appId)) {
+  for (const entry of entries) {
+    const game = toInstalledGame(entry);
+    if (game !== undefined && !games.has(game.appId)) {
       games.set(game.appId, game);
     }
   }
 
   const result = [...games.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-  streamDeck.logger.info(`Found ${result.length} installed game(s) across ${libraries.length} library folder(s)`);
+  const libraryCount = new Set(entries.map((entry) => entry.library)).size;
+  streamDeck.logger.info(`Found ${result.length} installed game(s) across ${libraryCount} library folder(s)`);
 
   return result;
 }
@@ -242,11 +238,41 @@ export async function listLibraries(steam: SteamInstall): Promise<string[]> {
 }
 
 /**
+ * One parsed `appmanifest_*.acf`, before any installed/launchable filtering is applied. Shared by
+ * {@link listInstalledGames} and the install-progress scan below, since both start from exactly the
+ * same files and there is no reason to walk every library's `steamapps` folder twice.
+ */
+type ManifestEntry = {
+  appId: string;
+  name: string;
+  library: string;
+  state: VdfObject;
+};
+
+/**
+ * Parses every app manifest across every library on this machine. Unfiltered: a manifest for a
+ * queued or mid-download app comes back just the same as an installed one, it is up to the caller
+ * to decide what counts.
+ * @returns Every manifest entry found.
+ */
+async function scanManifests(): Promise<ManifestEntry[]> {
+  const steam = await findSteam();
+  if (steam === undefined) {
+    return [];
+  }
+
+  const libraries = await listLibraries(steam);
+  const perLibrary = await Promise.all(libraries.map((library) => readLibraryManifests(library)));
+
+  return perLibrary.flat();
+}
+
+/**
  * Reads every app manifest in a single library folder.
  * @param library Absolute path to the library, e.g. `E:\SteamLibrary`.
- * @returns Installed games found there.
+ * @returns Manifest entries found there.
  */
-async function readLibrary(library: string): Promise<SteamGame[]> {
+async function readLibraryManifests(library: string): Promise<ManifestEntry[]> {
   const steamapps = path.join(library, "steamapps");
 
   // `exists` already bounds a dead library's own probe; this covers the rarer case where that
@@ -260,18 +286,18 @@ async function readLibrary(library: string): Promise<SteamGame[]> {
   }
 
   const manifests = entries.filter((entry) => /^appmanifest_\d+\.acf$/i.test(entry));
-  const games = await Promise.all(manifests.map((entry) => readManifest(path.join(steamapps, entry), library)));
+  const parsed = await Promise.all(manifests.map((entry) => readManifestEntry(path.join(steamapps, entry), library)));
 
-  return games.filter((game): game is SteamGame => game !== undefined);
+  return parsed.filter((entry): entry is ManifestEntry => entry !== undefined);
 }
 
 /**
- * Parses a single `appmanifest_*.acf` into a game, filtering out anything that is not launchable.
+ * Parses a single `appmanifest_*.acf` into a {@link ManifestEntry}.
  * @param file Absolute path to the manifest.
  * @param library Library the manifest belongs to.
- * @returns The game, or `undefined` when the entry should not be offered to the user.
+ * @returns The entry, or `undefined` when the file could not be read as a manifest with an app id.
  */
-async function readManifest(file: string, library: string): Promise<SteamGame | undefined> {
+async function readManifestEntry(file: string, library: string): Promise<ManifestEntry | undefined> {
   const parsed = await readVdfFile(file);
   if (parsed === undefined) {
     return undefined;
@@ -279,16 +305,29 @@ async function readManifest(file: string, library: string): Promise<SteamGame | 
 
   const state = getObject(parsed, "AppState") ?? firstObject(parsed);
   const appId = getString(state, "appid")?.trim();
-  if (appId === undefined || !/^\d{1,10}$/.test(appId)) {
+  if (state === undefined || appId === undefined || !/^\d{1,10}$/.test(appId)) {
     return undefined;
   }
+
+  // Fall back to the app id so a manifest with a missing name is still usable rather than blank.
+  const name = getString(state, "name")?.trim() || `App ${appId}`;
+
+  return { appId, name, library, state };
+}
+
+/**
+ * Applies the installed/launchable filter to a manifest entry, the same rules
+ * {@link listInstalledGames} has always used.
+ * @param entry Manifest entry to filter.
+ * @returns The game, or `undefined` when the entry should not be offered to the user.
+ */
+function toInstalledGame(entry: ManifestEntry): SteamGame | undefined {
+  const { appId, name, library, state } = entry;
 
   if ((getNumber(state, "StateFlags") & STATE_FULLY_INSTALLED) === 0) {
     return undefined; // queued or mid-download, launching it would just open a progress bar
   }
 
-  // Fall back to the app id so a manifest with a missing name is still usable rather than blank.
-  const name = getString(state, "name")?.trim() || `App ${appId}`;
   if (NOT_A_GAME.test(name) || getString(state, "installdir")?.startsWith("Steamworks Shared")) {
     return undefined;
   }
@@ -300,6 +339,131 @@ async function readManifest(file: string, library: string): Promise<SteamGame | 
     sizeOnDisk: getNumber(state, "SizeOnDisk"),
     lastPlayed: getNumber(state, "LastPlayed"),
   };
+}
+
+/** Live install/update progress for one app, straight off its manifest. */
+type ManifestProgress = {
+  appId: string;
+  name: string;
+  fullyInstalled: boolean;
+
+  /** Fraction downloaded, in `[0, 1]`; `undefined` when `BytesToDownload` is `0` or absent. */
+  fraction?: number;
+};
+
+/**
+ * How long a progress scan stays fresh. Much shorter than {@link getInstalledGames}'s own cache:
+ * bytes downloaded moves continuously during an active transfer, where the list of installed games
+ * barely changes minute to minute.
+ */
+const PROGRESS_TTL = 3_000;
+
+let progressCache: { at: number; progress: Map<string, ManifestProgress> } | undefined;
+let progressScanning: Promise<Map<string, ManifestProgress>> | undefined;
+
+/**
+ * App ids that were not yet fully installed as of the previous scan, so a transition to fully
+ * installed, or the manifest simply disappearing, can be told apart from "still downloading".
+ */
+let previouslyIncomplete = new Set<string>();
+
+/**
+ * Reads every manifest's install/update progress, cached briefly so several keys or a dial polling
+ * at once share one disk scan rather than each re-reading every `.acf` file.
+ * @returns Progress by app id.
+ */
+async function getManifestProgress(): Promise<Map<string, ManifestProgress>> {
+  if (progressCache !== undefined && Date.now() - progressCache.at < PROGRESS_TTL) {
+    return progressCache.progress;
+  }
+
+  if (progressScanning === undefined) {
+    const task = scanManifests()
+      .then((entries) => {
+        const progress = new Map<string, ManifestProgress>();
+        const incomplete = new Set<string>();
+
+        for (const entry of entries) {
+          if (NOT_A_GAME.test(entry.name)) {
+            continue;
+          }
+
+          const fullyInstalled = (getNumber(entry.state, "StateFlags") & STATE_FULLY_INSTALLED) !== 0;
+          if (!fullyInstalled) {
+            incomplete.add(entry.appId);
+          }
+
+          const toDownload = getNumber(entry.state, "BytesToDownload");
+          const downloaded = getNumber(entry.state, "BytesDownloaded");
+          const fraction = toDownload > 0 ? Math.min(1, Math.max(0, downloaded / toDownload)) : undefined;
+
+          progress.set(entry.appId, { appId: entry.appId, name: entry.name, fullyInstalled, fraction });
+        }
+
+        // An app that was mid-install last scan and is not any more, whether it finished or its
+        // manifest vanished outright, means `getInstalledGames`'s own 60s cache is now stale: left
+        // alone, the game would disappear from both lists for up to a minute. Busting it here keeps
+        // the gap to a single progress-scan tick.
+        for (const appId of previouslyIncomplete) {
+          if (!incomplete.has(appId)) {
+            cache = undefined;
+            break;
+          }
+        }
+        previouslyIncomplete = incomplete;
+
+        return progress;
+      })
+      .catch((err) => {
+        streamDeck.logger.debug("Could not read Steam install progress", err);
+        return new Map<string, ManifestProgress>();
+      })
+      .finally(() => {
+        if (progressScanning === task) {
+          progressScanning = undefined;
+        }
+      });
+
+    progressScanning = task;
+  }
+
+  const progress = await progressScanning;
+  progressCache = { at: Date.now(), progress };
+  return progress;
+}
+
+/** A game whose first install, not an update to one already installed, is still in progress. */
+export type InstallingGame = {
+  appId: string;
+  name: string;
+
+  /** Fraction downloaded, in `[0, 1]`; `undefined` when Steam hasn't sized the download yet. */
+  fraction?: number;
+};
+
+/**
+ * Games currently being installed for the first time, i.e. not yet in {@link getInstalledGames} at
+ * all. Excludes anything Steam hasn't started sizing yet, which would otherwise show as a slot stuck
+ * at an unknown, un-fillable 0%.
+ * @returns Installing games, sorted by name.
+ */
+export async function getInstallingGames(): Promise<InstallingGame[]> {
+  const progress = await getManifestProgress();
+
+  return [...progress.values()]
+    .filter((entry) => !entry.fullyInstalled && entry.fraction !== undefined)
+    .map((entry) => ({ appId: entry.appId, name: entry.name, fraction: entry.fraction }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+/**
+ * Live download progress for one app, whether it is installing for the first time or updating one
+ * already installed.
+ * @param appId Steam application id.
+ * @returns Fraction downloaded, in `[0, 1]`, or `undefined` when unknown.
+ */
+export async function getDownloadFraction(appId: string): Promise<number | undefined> {
+  return (await getManifestProgress()).get(appId)?.fraction;
 }
 
 /**

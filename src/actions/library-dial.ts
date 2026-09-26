@@ -11,11 +11,11 @@ import streamDeck, {
 
 import { type ArtFit, type ArtStyle, renderStripImage, type Size, type StatusBadge } from "../steam/artwork";
 import { launchGame, openSteamUrl } from "../steam/launch";
-import { getInstalledGames, sortGames, type SortOrder, type SteamGame } from "../steam/library";
+import { getDownloadFraction, type SortOrder } from "../steam/library";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { getRunningGame } from "../steam/running";
 import { getAppStates } from "../steam/status";
-import { badgeFor, formatElapsed, type GamePagePage, steamPageUrl } from "./common";
+import { badgeFor, formatElapsed, type GamePagePage, librarySlots, type LibrarySlot, steamPageUrl } from "./common";
 
 /**
  * Per-dial settings for {@link LibraryDial}.
@@ -51,6 +51,12 @@ type LibraryDialSettings = {
 
   /** Whether the position line also counts up while the game on show is running. Defaults to on. */
   showPlayTime?: boolean;
+
+  /**
+   * Whether a game downloading for the first time gets a temporary entry at the front of the scroll,
+   * filling with the amber "updating" ring as it goes. Defaults to on.
+   */
+  showInstalling?: boolean;
 };
 
 const DEFAULT_STYLE: ArtStyle = "hero";
@@ -97,6 +103,13 @@ const RUNNING_COLOUR = "#359b43";
  */
 const PLACE_STYLE = { color: "#ffffff", font: { size: 13, weight: 500 } } as const;
 const CLOCK_STYLE = { color: RUNNING_COLOUR, font: { size: 22, weight: 600 } } as const;
+
+/**
+ * Colour of the "Installing NN%" line, matching `STATUS_COLOURS.updating` in `artwork.ts` exactly
+ * so the text and the ring filling in around the art read as one signal.
+ */
+const INSTALLING_COLOUR = "#f5a623";
+const INSTALLING_STYLE = { color: INSTALLING_COLOUR, font: { size: 14, weight: 600 } } as const;
 
 /**
  * A dial that scrolls through the installed library on its touch display: turn to move through
@@ -180,18 +193,18 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    */
   override async onDialRotate(ev: DialRotateEvent<LibraryDialSettings>): Promise<void> {
     const { settings } = ev.payload;
-    const games = await this.#games(settings);
+    const slots = await this.#slots(settings);
 
-    if (games.length === 0) {
+    if (slots.length === 0) {
       await this.#drawEmpty(ev.action);
       return;
     }
 
-    const from = clampCursor(settings.cursor, games.length);
-    const cursor = (((from + ev.payload.ticks) % games.length) + games.length) % games.length;
+    const from = clampCursor(settings.cursor, slots.length);
+    const cursor = (((from + ev.payload.ticks) % slots.length) + slots.length) % slots.length;
 
     await ev.action.setSettings({ ...settings, cursor });
-    await this.#paint(ev.action, settings, games, cursor);
+    await this.#paint(ev.action, settings, slots, cursor);
   }
 
   /**
@@ -200,27 +213,33 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    */
   override async onDialDown(ev: DialDownEvent<LibraryDialSettings>): Promise<void> {
     const { settings } = ev.payload;
-    const game = await this.#current(settings);
+    const slot = await this.#current(settings);
 
-    if (game === undefined) {
+    if (slot === undefined) {
       await ev.action.showAlert();
+      return;
+    }
+
+    if (slot.installing) {
+      await ev.action.showAlert(); // still downloading, nothing to launch yet
       return;
     }
 
     try {
-      await launchGame(game.appId);
+      await launchGame(slot.appId);
     } catch (err) {
-      streamDeck.logger.error(`Could not launch ${game.name}`, err);
+      streamDeck.logger.error(`Could not launch ${slot.name}`, err);
       await ev.action.showAlert();
       return;
     }
 
-    streamDeck.logger.info(`Dial launched ${game.name} (${game.appId})`);
+    streamDeck.logger.info(`Dial launched ${slot.name} (${slot.appId})`);
   }
 
   /**
    * Opens the Steam page for the game on show, so the dial can be used to look something up
-   * without launching it.
+   * without launching it. Works the same whether the game is fully installed or still downloading
+   * for the first time, opening its store page is harmless either way.
    * @param ev Event arguments.
    */
   override async onTouchTap(ev: TouchTapEvent<LibraryDialSettings>): Promise<void> {
@@ -231,41 +250,42 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
       return;
     }
 
-    const game = await this.#current(settings);
-    if (game === undefined) {
+    const slot = await this.#current(settings);
+    if (slot === undefined) {
       await ev.action.showAlert();
       return;
     }
 
     try {
-      await openSteamUrl(steamPageUrl(opens, game.appId));
+      await openSteamUrl(steamPageUrl(opens, slot.appId));
     } catch (err) {
-      streamDeck.logger.error(`Could not open the ${opens} page for ${game.name}`, err);
+      streamDeck.logger.error(`Could not open the ${opens} page for ${slot.name}`, err);
       await ev.action.showAlert();
     }
   }
 
   /**
-   * The library in the order this dial scrolls it.
+   * The library in the order this dial scrolls it, games still downloading for the first time up
+   * front, followed by the already-installed library sorted per the dial's own setting.
    * @param settings The dial's settings.
-   * @returns Installed games, sorted.
+   * @returns The combined slot list.
    */
-  async #games(settings: LibraryDialSettings): Promise<SteamGame[]> {
-    return sortGames(await getInstalledGames(), settings.sortOrder ?? DEFAULT_SORT);
+  async #slots(settings: LibraryDialSettings): Promise<LibrarySlot[]> {
+    return librarySlots(settings.sortOrder ?? DEFAULT_SORT, settings.showInstalling !== false);
   }
 
   /**
-   * The game the dial is currently sitting on.
+   * The slot the dial is currently sitting on.
    * @param settings The dial's settings.
-   * @returns The game, or `undefined` when nothing is installed.
+   * @returns The slot, or `undefined` when there is nothing to show.
    */
-  async #current(settings: LibraryDialSettings): Promise<SteamGame | undefined> {
-    const games = await this.#games(settings);
-    if (games.length === 0) {
+  async #current(settings: LibraryDialSettings): Promise<LibrarySlot | undefined> {
+    const slots = await this.#slots(settings);
+    if (slots.length === 0) {
       return undefined;
     }
 
-    return games[clampCursor(settings.cursor, games.length)];
+    return slots[clampCursor(settings.cursor, slots.length)];
   }
 
   /**
@@ -278,49 +298,59 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
       return; // the manifest only offers this action on encoders
     }
 
-    const games = await this.#games(settings);
-    if (games.length === 0) {
+    const slots = await this.#slots(settings);
+    if (slots.length === 0) {
       await this.#drawEmpty(target);
       return;
     }
 
-    await this.#paint(target, settings, games, clampCursor(settings.cursor, games.length));
+    await this.#paint(target, settings, slots, clampCursor(settings.cursor, slots.length));
   }
 
   /**
-   * Paints the touch display for one position in the library.
+   * Paints the touch display for one position in the combined list.
    * @param target The dial to draw on.
    * @param settings Its settings.
-   * @param games The sorted library.
+   * @param slots The combined slot list.
    * @param cursor Position within it.
    */
   async #paint(
     target: DialTarget,
     settings: LibraryDialSettings,
-    games: SteamGame[],
+    slots: LibrarySlot[],
     cursor: number,
   ): Promise<void> {
-    const game = games[cursor]!;
+    const slot = slots[cursor]!;
 
-    const state = (await getAppStates()).get(game.appId);
+    if (slot.installing) {
+      await this.#paintInstalling(target, slot, settings);
+      return;
+    }
+
+    const state = (await getAppStates()).get(slot.appId);
     const badge = badgeFor(settings.showStatus !== false, state);
 
-    const position = await this.#position(settings, game, cursor, games.length, badge);
+    // Only worth the extra file read when there is actually a ring to fill in.
+    const fraction = badge === "updating" ? await getDownloadFraction(slot.appId) : undefined;
+
+    const position = await this.#position(settings, slot, cursor, slots.length, badge);
 
     // The poll fires every few seconds whether or not anything moved; sending an unchanged frame
     // every time would burn a render and a round trip per dial for nothing. The clock is part of
     // the signature, so a running game still ticks.
-    const signature = `${game.appId}:${badge}:${position.value}:${settings.artStyle}:${settings.artFit}`;
+    const percent = fraction === undefined ? "-" : Math.round(fraction * 100);
+    const signature = `${slot.appId}:${badge}:${position.value}:${settings.artStyle}:${settings.artFit}:${percent}`;
     if (this.#drawn.get(target.id) === signature) {
       return;
     }
 
     const art = await renderStripImage(
-      game.appId,
+      slot.appId,
       settings.artStyle ?? DEFAULT_STYLE,
       settings.artFit ?? DEFAULT_FIT,
       ART_SIZE,
       badge,
+      fraction,
     );
 
     this.#drawn.set(target.id, signature);
@@ -331,7 +361,42 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
     // A layout item can be handed a whole definition rather than just a string, which is how the
     // clock gets its own colour without a second item; the layout has no room for one, and items
     // are not allowed to overlap.
-    await target.setFeedback({ art, name: game.name, position });
+    await target.setFeedback({ art, name: slot.name, position });
+  }
+
+  /**
+   * Paints the touch display for a game whose first install is still in progress: the same amber
+   * ring "updating" games get, filled to its actual download fraction, with the position line
+   * replaced by the percentage since there is no place in the library to report yet.
+   * @param target The dial to draw on.
+   * @param slot The installing entry.
+   * @param settings Its settings.
+   */
+  async #paintInstalling(target: DialTarget, slot: LibrarySlot, settings: LibraryDialSettings): Promise<void> {
+    const percent = slot.fraction === undefined ? undefined : Math.round(slot.fraction * 100);
+    const signature = `installing:${slot.appId}:${percent}:${settings.artStyle}:${settings.artFit}`;
+
+    if (this.#drawn.get(target.id) === signature) {
+      return;
+    }
+
+    const art = await renderStripImage(
+      slot.appId,
+      settings.artStyle ?? DEFAULT_STYLE,
+      settings.artFit ?? DEFAULT_FIT,
+      ART_SIZE,
+      "updating",
+      slot.fraction,
+    );
+
+    this.#drawn.set(target.id, signature);
+
+    const position = {
+      value: percent === undefined ? "Installing…" : `Installing ${percent}%`,
+      ...INSTALLING_STYLE,
+    };
+
+    await target.setFeedback({ art, name: slot.name, position });
   }
 
   /**
@@ -341,15 +406,15 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * The clock only appears for the game the dial is actually showing, the same rule the keys
    * follow. A dial parked elsewhere in the library does not report someone else's session.
    * @param settings The dial's settings.
-   * @param game The game on show.
-   * @param cursor Its position in the library.
-   * @param total Size of the library.
+   * @param slot The slot on show.
+   * @param cursor Its position in the combined list.
+   * @param total Size of the combined list.
    * @param badge What the art is framed with, so an idle game skips the lookup entirely.
    * @returns The line to draw.
    */
   async #position(
     settings: LibraryDialSettings,
-    game: SteamGame,
+    slot: LibrarySlot,
     cursor: number,
     total: number,
     badge: StatusBadge,
@@ -361,7 +426,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
     }
 
     const running = await getRunningGame();
-    if (running?.game.appId !== game.appId || running.since === undefined) {
+    if (running?.game.appId !== slot.appId || running.since === undefined) {
       return place;
     }
 
