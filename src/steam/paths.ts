@@ -113,7 +113,7 @@ async function locate(): Promise<SteamInstall | undefined> {
 		// `steamapps` is the only directory we actually need, so it is the test that matters.
 		if (await exists(path.join(root, "steamapps"))) {
 			const install: SteamInstall = { root };
-			const executable = await findExecutable(root);
+			const executable = (await registeredExecutable()) ?? (await findExecutable(root));
 			if (executable !== undefined) {
 				install.executable = executable;
 			}
@@ -150,6 +150,39 @@ async function windowsCandidates(): Promise<string[]> {
 }
 
 /**
+ * Finds the Steam executable the client itself registered, on Windows.
+ *
+ * Steam records where it really lives in two places: `SteamExe` under the user's own key, and the
+ * `steam://` protocol handler it registers with the shell. Both are rewritten by the client on
+ * every start, so they stay right even when the install root was found some other way, a stale
+ * `SteamPath`, a copied or moved installation, or a default location that happens to hold an old
+ * `steamapps` folder, and launching through the wrong `steam.exe` quietly does nothing.
+ * @returns Absolute path to the executable, or `undefined` when neither entry points at one.
+ */
+async function registeredExecutable(): Promise<string | undefined> {
+	if (process.platform !== "win32") {
+		return undefined;
+	}
+
+	const [steamExe, command] = await Promise.all([
+		queryRegistry("HKCU\\Software\\Valve\\Steam", "SteamExe"),
+		// `HKCR` is the merged per-user and machine-wide view, so this finds the handler either way.
+		queryRegistry("HKCR\\steam\\Shell\\Open\\Command", ""),
+	]);
+
+	// The handler reads like `"C:\Program Files (x86)\Steam\steam.exe" -- "%1"`.
+	const fromCommand = command === undefined ? undefined : /^\s*"([^"]+\.exe)"/i.exec(command)?.[1];
+
+	for (const candidate of [steamExe, fromCommand]) {
+		if (candidate !== undefined && (await exists(path.normalize(candidate)))) {
+			return path.normalize(candidate);
+		}
+	}
+
+	return undefined;
+}
+
+/**
  * Builds the macOS / Linux candidate list.
  * @returns Candidate root directories, best guess first.
  */
@@ -170,12 +203,14 @@ function unixCandidates(): string[] {
 /**
  * Reads a single string value from the Windows registry via `reg.exe`.
  * @param key Full registry key, e.g. `HKCU\Software\Valve\Steam`.
- * @param value Value name to read.
+ * @param value Value name to read, or `""` for the key's default value.
  * @returns The value, or `undefined` when the key is missing.
  */
 async function queryRegistry(key: string, value: string): Promise<string | undefined> {
 	try {
-		const { stdout } = await execFileAsync("reg", ["query", key, "/v", value], {
+		// An empty name means the key's default value, which `reg.exe` only reads through `/ve`.
+		const selector = value === "" ? ["/ve"] : ["/v", value];
+		const { stdout } = await execFileAsync("reg", ["query", key, ...selector], {
 			windowsHide: true,
 			timeout: 5_000,
 		});
