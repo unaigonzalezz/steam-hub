@@ -11,8 +11,8 @@ import streamDeck, {
 
 import { type ArtFit, type ArtStyle, renderKeyImage } from "../steam/artwork";
 import { openSteamUrl } from "../steam/launch";
-import { addStatusListener, removeStatusListener } from "../steam/monitor";
-import { getRunningGame } from "../steam/running";
+import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
+import { getCurrentSession, getRunningGame } from "../steam/running";
 import { formatElapsed } from "./common";
 
 /**
@@ -33,9 +33,8 @@ const DEFAULT_FIT: ArtFit = "fill";
 const IDLE_TITLE = "--:--";
 
 /**
- * One running game's session, timed from the moment this plugin first saw it running rather than
- * from Steam's own record, so a session already under way when the plugin starts is timed from
- * then, not from zero.
+ * One running game's session, timed from when Steam launched it, so it matches Steam's own record
+ * and a session already under way when the plugin starts is still timed from its real start.
  */
 type Session = {
   appId: string;
@@ -52,7 +51,10 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
   /** Bound so the same reference can be added to and removed from the shared poll. */
   readonly #onPoll = (): Promise<void> => this.#redrawAll();
 
-  /** Whether {@link PlayTimer.#onPoll} is currently registered. */
+  /** Bound for the same reason, for the once-a-second clock. */
+  readonly #onClock = (): Promise<void> => this.#tickAll();
+
+  /** Whether {@link PlayTimer.#onPoll} and {@link PlayTimer.#onClock} are currently registered. */
   #listening = false;
 
   /** What each key currently shows, so a poll only repaints what actually changed. */
@@ -69,6 +71,7 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
+      addClockListener(this.#onClock);
     }
 
     await this.#draw(ev.action, ev.payload.settings);
@@ -85,6 +88,7 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
     if (this.#listening && [...this.actions].length <= 1) {
       this.#listening = false;
       removeStatusListener(this.#onPoll);
+      removeClockListener(this.#onClock);
     }
   }
 
@@ -139,6 +143,21 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
         }
       }),
     );
+  }
+
+  /**
+   * Advances the clock on every visible key between polls, from the session the last poll found.
+   * Only the title changes, so nothing is read and no art is redrawn.
+   */
+  async #tickAll(): Promise<void> {
+    // Straight from the shared session, whose start may just have been corrected to Steam's stamp.
+    const session = getCurrentSession();
+    if (session === undefined || this.#session?.appId !== session.appId) {
+      return; // idle, or the game changed and the next poll will repaint the keys properly
+    }
+
+    const title = formatElapsed(Date.now() - session.since);
+    await Promise.all([...this.actions].map((target) => (target.isKey() ? target.setTitle(title) : undefined)));
   }
 
   /**

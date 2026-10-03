@@ -14,9 +14,9 @@ import { checkForNewAchievement, type LatestAchievement } from "../steam/achieve
 import { type ArtFit, type ArtStyle, renderAchievementKey, renderEmptyKey, renderKeyImage, type StatusBadge } from "../steam/artwork";
 import { launchGame, openSteamUrl } from "../steam/launch";
 import { getDownloadFraction, type SortOrder } from "../steam/library";
-import { addStatusListener, removeStatusListener } from "../steam/monitor";
-import { getRunningGame } from "../steam/running";
-import { getAppStates } from "../steam/status";
+import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
+import { getCurrentSession, getRunningGame } from "../steam/running";
+import { getAppStates, peekAppStates } from "../steam/status";
 import {
   badgeFor,
   formatElapsed,
@@ -97,11 +97,23 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
   /** Bound so the same reference can be added to and removed from the shared poll. */
   readonly #onPoll = (): Promise<void> => this.#redrawAll();
 
-  /** Whether {@link ShowInstalled.#onPoll} is currently registered. */
+  /** Bound for the same reason, for the once-a-second clock. */
+  readonly #onClock = (): Promise<void> => this.#tickAll();
+
+  /** Whether {@link ShowInstalled.#onPoll} and {@link ShowInstalled.#onClock} are currently registered. */
   #listening = false;
 
   /** What each key currently shows, so a poll only repaints what actually changed. */
   readonly #drawn = new Map<string, string>();
+
+  /**
+   * Keys currently showing their game's play time, with what goes above the clock, so the clock
+   * can tick every second without redrawing the art or reading anything.
+   */
+  readonly #clocks = new Map<string, { target: KeyAction<SlotSettings>; appId: string; nameTitle: string }>();
+
+  /** Keys currently showing a download ring, so the clock can keep it filling between polls. */
+  readonly #downloads = new Map<string, KeyAction<SlotSettings>>();
 
   /**
    * Timers for keys currently held down, waiting to see whether the press turns into a hold. Only
@@ -141,6 +153,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
+      addClockListener(this.#onClock);
     }
 
     await this.#draw(ev.action, ev.payload.settings);
@@ -152,6 +165,8 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    */
   override onWillDisappear(ev: WillDisappearEvent<SlotSettings>): void {
     this.#drawn.delete(ev.action.id);
+    this.#clocks.delete(ev.action.id);
+    this.#downloads.delete(ev.action.id);
     this.#cancelPress(ev.action.id);
     this.#cancelFlash(ev.action.id);
 
@@ -159,6 +174,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     if (this.#listening && [...this.actions].length <= 1) {
       this.#listening = false;
       removeStatusListener(this.#onPoll);
+      removeClockListener(this.#onClock);
     }
   }
 
@@ -311,6 +327,33 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
   }
 
   /**
+   * Advances the play-time line on every key showing one, between polls. Only the title changes,
+   * from the session the last poll found, so nothing is read and no art is redrawn.
+   */
+  async #tickAll(): Promise<void> {
+    // Download rings follow the manifests on disk, which Steam rewrites as bytes arrive; those are
+    // cheap to re-read, unlike the registry, so the ring fills every second rather than every poll.
+    await Promise.all(
+      [...this.#downloads.values()].map(async (target) => this.#draw(target, await target.getSettings(), false)),
+    );
+
+    const session = getCurrentSession();
+    if (session === undefined) {
+      return;
+    }
+
+    const elapsed = formatElapsed(Date.now() - session.since);
+
+    await Promise.all(
+      [...this.#clocks.values()].map(async ({ target, appId, nameTitle }) => {
+        if (appId === session.appId && !this.#flashTimers.has(target.id)) {
+          await target.setTitle(withElapsed(nameTitle, elapsed));
+        }
+      }),
+    );
+  }
+
+  /**
    * Checks whether the running game just unlocked a new achievement and, when a visible key happens
    * to be showing that game right now, takes it over to announce it.
    *
@@ -406,8 +449,13 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    * Paints a key: the game at its index, or nothing at all.
    * @param target Key to draw on.
    * @param settings The key's settings.
+   * @param live Whether to read the registry afresh; a clock tick reuses the last poll's reading.
    */
-  async #draw(target: DialAction<SlotSettings> | KeyAction<SlotSettings>, settings: SlotSettings): Promise<void> {
+  async #draw(
+    target: DialAction<SlotSettings> | KeyAction<SlotSettings>,
+    settings: SlotSettings,
+    live = true,
+  ): Promise<void> {
     if (!target.isKey()) {
       return; // the manifest only offers this action on keypads
     }
@@ -415,6 +463,10 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     if (this.#flashTimers.has(target.id)) {
       return; // a just-unlocked achievement is taking this key over; its own timer restores the normal art
     }
+
+    // Put back below, if this key still has a clock or a download ring to show.
+    this.#clocks.delete(target.id);
+    this.#downloads.delete(target.id);
 
     // No position typed in yet: leave the action's own icon showing, so a key dragged onto the
     // device reads as "configure me" rather than as a slot that happens to be empty.
@@ -433,11 +485,13 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     }
 
     if (slot.installing) {
+      this.#downloads.set(target.id, target);
       await this.#drawInstalling(target, slot, shared);
       return;
     }
 
-    const state = (await getAppStates()).get(slot.appId);
+    const states = live ? await getAppStates() : (peekAppStates() ?? (await getAppStates()));
+    const state = states.get(slot.appId);
     const badge: StatusBadge = badgeFor(shared.showStatus !== false, state);
     const style = shared.artStyle ?? DEFAULT_SHARED.artStyle;
 
@@ -455,12 +509,22 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       shared.showPlayTime === true && state?.running === true ? await elapsedSince(slot.appId) : undefined;
 
     const nameTitle = shared.showTitle === true || style === "none" ? wrapTitle(slot.name, elapsed ? 2 : 3) : "";
-    const title = elapsed === undefined ? nameTitle : nameTitle === "" ? elapsed : `${nameTitle}\n${elapsed}`;
+    const title = elapsed === undefined ? nameTitle : withElapsed(nameTitle, elapsed);
     const percent = fraction === undefined ? "-" : Math.round(fraction * 100);
 
+    if (elapsed !== undefined) {
+      this.#clocks.set(target.id, { target, appId: slot.appId, nameTitle });
+    }
+
+    if (badge === "updating") {
+      this.#downloads.set(target.id, target);
+    }
+
+    // The clock itself stays out of the signature: #tickAll keeps it current every second, and
+    // leaving it in would push the whole image again on every poll just because the time moved.
     await this.#paint(
       target,
-      `${slot.appId}:${style}:${badge}:${percent}:${title}`,
+      `${slot.appId}:${style}:${badge}:${percent}:${nameTitle}:${elapsed !== undefined}`,
       image ?? (await renderEmptyKey(shared.emptyImage)),
       title,
     );
@@ -547,6 +611,16 @@ function parseIndex(settings: SlotSettings): number | undefined {
  */
 async function getShared(): Promise<SharedSettings> {
   return (shared ??= await streamDeck.settings.getGlobalSettings<SharedSettings>());
+}
+
+/**
+ * Puts the play-time line under a key's name, or on its own when the key shows no name.
+ * @param nameTitle The wrapped name, or `""`.
+ * @param elapsed The formatted play time.
+ * @returns The key's title.
+ */
+function withElapsed(nameTitle: string, elapsed: string): string {
+  return nameTitle === "" ? elapsed : `${nameTitle}\n${elapsed}`;
 }
 
 /**
