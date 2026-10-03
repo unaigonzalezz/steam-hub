@@ -22,6 +22,26 @@
       to the bundled Steam profile.
     </p>
 
+    <sdpi-item label="Collection">
+      <sdpi-select
+        setting="collection"
+        datasource="getCollections"
+        show-refresh
+        default=""
+        loading="Reading your collections…"
+      ></sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item>
+      <sdpi-button id="apply-collection">Use it on every key of this page</sdpi-button>
+    </sdpi-item>
+
+    <p class="hint">
+      Numbers this key into one of your Steam collections instead of the whole library, so each profile or page can
+      hold a different one: favourites on one, co-op games on another. Only installed games show up, and dynamic
+      collections aren't listed, since Steam keeps no list of games for those.
+    </p>
+
     <p class="hint">
       Not every Elgato device ships with a ready-made profile yet. If yours is missing one, every action above still
       works, it just needs its keys laid out by hand, or a profile contributed by someone who owns that device, see
@@ -151,6 +171,13 @@
 
         client.didReceiveGlobalSettings.subscribe((ev) => sync(ev.payload?.settings));
         client.getGlobalSettings().then(sync);
+
+        // Read back from the stored settings rather than the select, so what gets copied is what
+        // this key actually uses, even before the picker has finished loading its list.
+        document.getElementById("apply-collection").addEventListener("click", async () => {
+          const { settings } = (await client.getSettings()) ?? {};
+          client.send("sendToPlugin", { event: "applyCollection", collection: settings?.collection ?? "" });
+        });
       })();
     </script>
 

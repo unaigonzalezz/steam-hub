@@ -1,6 +1,7 @@
 import { DeviceType } from "@elgato/streamdeck";
 
 import { pluginPath, renderImageFile, type StatusBadge } from "../steam/artwork";
+import { findCollection, getCollections } from "../steam/collections";
 import { getInstalledGames, getInstallingGames, sortGames, type SortOrder } from "../steam/library";
 
 /**
@@ -157,11 +158,20 @@ export type LibrarySlot = {
  * which is why `includeInstalling` exists as an opt-out.
  * @param sortOrder How the already-installed part of the list is ordered.
  * @param includeInstalling Whether first installs in progress get a slot at all.
+ * @param collection Id of a Steam collection to narrow the list down to; empty or `undefined` for
+ * the whole library. A collection that no longer exists yields an empty list rather than quietly
+ * falling back to everything, so the keys read as "this needs looking at".
  * @returns The combined list.
  */
-export async function librarySlots(sortOrder: SortOrder, includeInstalling: boolean): Promise<LibrarySlot[]> {
+export async function librarySlots(
+  sortOrder: SortOrder,
+  includeInstalling: boolean,
+  collection?: string,
+): Promise<LibrarySlot[]> {
+  const inCollection = await collectionFilter(collection);
+
   const installing: LibrarySlot[] = includeInstalling
-    ? (await getInstallingGames()).map((game) => ({
+    ? (await getInstallingGames()).filter(inCollection).map((game) => ({
         appId: game.appId,
         name: game.name,
         installing: true,
@@ -169,13 +179,50 @@ export async function librarySlots(sortOrder: SortOrder, includeInstalling: bool
       }))
     : [];
 
-  const installed: LibrarySlot[] = sortGames(await getInstalledGames(), sortOrder).map((game) => ({
+  const installed: LibrarySlot[] = sortGames((await getInstalledGames()).filter(inCollection), sortOrder).map((game) => ({
     appId: game.appId,
     name: game.name,
     installing: false,
   }));
 
   return [...installing, ...installed];
+}
+
+/**
+ * Builds the membership test for {@link librarySlots}, and for anything else that picks games out
+ * of a collection.
+ * @param collection Collection id, or empty / `undefined` for the whole library.
+ * @returns A predicate over anything carrying an app id.
+ */
+export async function collectionFilter(collection: string | undefined): Promise<(game: { appId: string }) => boolean> {
+  if (collection === undefined || collection === "") {
+    return () => true;
+  }
+
+  const found = await findCollection(collection);
+  if (found === undefined) {
+    return () => false;
+  }
+
+  return (game) => found.appIds.has(game.appId);
+}
+
+/**
+ * Builds the items for a property inspector's collection picker: the whole library first, then
+ * every static collection the signed-in account has, by name.
+ * @param refresh Whether to re-read the collections rather than reuse the last read.
+ * @returns Items for the property inspector's select.
+ */
+export async function collectionPickerItems(refresh: boolean): Promise<{ value: string; label: string }[]> {
+  const collections = await getCollections(refresh);
+
+  return [
+    { value: "", label: "Whole library" },
+    ...collections.map((collection) => ({
+      value: collection.id,
+      label: `${collection.name} (${collection.appIds.size})`,
+    })),
+  ];
 }
 
 /**

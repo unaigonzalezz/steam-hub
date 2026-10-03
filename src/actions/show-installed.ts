@@ -5,6 +5,7 @@ import streamDeck, {
   type KeyAction,
   type KeyDownEvent,
   type KeyUpEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type WillAppearEvent,
   type WillDisappearEvent,
@@ -19,6 +20,7 @@ import { getCurrentSession, getRunningGame } from "../steam/running";
 import { getAppStates, peekAppStates } from "../steam/status";
 import {
   badgeFor,
+  collectionPickerItems,
   formatElapsed,
   type GamePagePage,
   librarySlots,
@@ -32,7 +34,8 @@ import {
 const FLASH_MS = 3_000;
 
 /**
- * Per-key settings for {@link ShowInstalled}: just the slot this key stands for.
+ * Per-key settings for {@link ShowInstalled}: the slot this key stands for, and which list it is a
+ * slot in.
  */
 type SlotSettings = {
   /**
@@ -40,7 +43,21 @@ type SlotSettings = {
    * text field hands back a string.
    */
   index?: string | number;
+
+  /**
+   * Id of the Steam collection this key numbers into; empty or absent for the whole library.
+   *
+   * Per key rather than shared, unlike the look below, because this is exactly what is meant to
+   * differ between profiles: one page of favourites, another of co-op games, each its own 1, 2, 3…
+   * The property inspector can copy it onto every other key of the page in one go.
+   */
+  collection?: string;
 };
+
+/** Messages the property inspector sends this action. */
+type InspectorMessage =
+  | { event: "getCollections"; isRefresh?: boolean }
+  | { event: "applyCollection"; collection?: string };
 
 /**
  * Settings shared by every key of this action, held in the plugin's global settings.
@@ -236,6 +253,61 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     }
 
     await this.#launch(ev.action, ev.payload.settings);
+  }
+
+  /**
+   * Serves the property inspector: the collection picker, and the button that copies a key's
+   * collection onto every other numbered key on the same device.
+   * @param ev Event arguments.
+   */
+  override async onSendToPlugin(ev: SendToPluginEvent<InspectorMessage, SlotSettings>): Promise<void> {
+    switch (ev.payload?.event) {
+      case "getCollections":
+        await streamDeck.ui.sendToPropertyInspector({
+          event: "getCollections",
+          items: await collectionPickerItems(ev.payload.isRefresh === true),
+        });
+        return;
+
+      case "applyCollection":
+        await this.#applyCollection(ev.action.device.id, ev.payload.collection ?? "");
+        return;
+
+      default:
+        streamDeck.logger.debug(
+          `Ignoring unknown message from the property inspector: ${(ev.payload as { event?: string } | undefined)?.event}`,
+        );
+    }
+  }
+
+  /**
+   * Points every numbered key showing on a device at the same collection. Only keys currently on
+   * screen are reachable, which is exactly the page the user is setting up.
+   * @param deviceId Device whose keys to update.
+   * @param collection Collection id, or `""` for the whole library.
+   */
+  async #applyCollection(deviceId: string, collection: string): Promise<void> {
+    let count = 0;
+
+    await Promise.all(
+      [...this.actions].map(async (target) => {
+        if (!target.isKey() || target.device.id !== deviceId) {
+          return;
+        }
+
+        const settings = await target.getSettings();
+        if (parseIndex(settings) === undefined || (settings.collection ?? "") === collection) {
+          return; // the entry key has no list of its own, and a key already set needs nothing
+        }
+
+        const next = { ...settings, collection };
+        await target.setSettings(next);
+        await this.#draw(target, next); // a plugin-side write raises no settings event to redraw on
+        count++;
+      }),
+    );
+
+    streamDeck.logger.info(`Pointed ${count} key(s) at collection "${collection || "whole library"}"`);
   }
 
   /**
@@ -440,7 +512,11 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     }
 
     const shared = await getShared();
-    const slots = await librarySlots(shared.sortOrder ?? DEFAULT_SHARED.sortOrder, shared.showInstalling !== false);
+    const slots = await librarySlots(
+      shared.sortOrder ?? DEFAULT_SHARED.sortOrder,
+      shared.showInstalling !== false,
+      settings.collection,
+    );
 
     return slots[index - 1]; // 1-based, so the numbers on the keys read the way people count
   }

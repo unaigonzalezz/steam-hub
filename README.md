@@ -30,6 +30,7 @@
 
 - Every key shows the game's own store art instead of a generic icon, so a profile ends up looking like a shelf of your library.
 - Give each key a number with "Show installed games" and the plugin matches it to a game from your library on its own, no picking which game goes where by hand.
+- Point a page of keys, a dial, or the random key at one of your Steam collections, so each profile can hold its own shelf: favourites on one, co-op games on another.
 - A key can glow green while its game is running, amber while it's updating, so you can tell what's going on without leaving your desk.
 - One key launches a random game and skips whatever it just picked, so it doesn't feel stuck on repeat.
 - Now Playing and Play Timer don't need a game configured, they just follow whatever Steam currently has open.
@@ -53,6 +54,8 @@ Turns a whole profile into a gallery of your library. Give each key a **position
 
 Sort order (name, most recently played, or size), art style, and title all live in one shared settings panel: set them once on any key of the profile and every other key follows.
 
+Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use it on every key of this page** to copy it across, then repeat on another page or profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. Only installed games appear, and dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
+
 A key left with no position doubles as the way in: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile.
 
 > The original Stream Deck, the MK2, the Stream Deck XL, the Stream Deck +, and the Stream Deck + XL ship with a ready-made profile today. See [Requirements](#requirements) and [Contributing](#contributing) if you own another Elgato device.
@@ -65,13 +68,13 @@ Where **Show Installed Games** needs a key for every game you want within reach,
 
 When the game on show is the one currently running, the art is framed green, amber while it's updating, and the position line counts up alongside it, the same signals the keys use.
 
-Sort order, art style, framing, what a tap opens, and both of those indicators are set per dial in the property inspector.
+Sort order, collection, art style, framing, what a tap opens, and both of those indicators are set per dial in the property inspector.
 
 ### Random Game
 
 Launches a random installed game on every press, and keeps showing that pick's art afterward so the key stays useful between presses instead of going blank.
 
-Never repeats the same game twice in a row while more than one is installed. Turn off **Remember last pick** if you'd rather the key reset between presses instead of showing the last game launched.
+Pick a **collection** to draw only from that one, a "backlog" collection, say. Never repeats the same game twice in a row while more than one is available. Turn off **Remember last pick** if you'd rather the key reset between presses instead of showing the last game launched.
 
 ### Steam Shortcut
 

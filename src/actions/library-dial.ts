@@ -3,6 +3,7 @@ import streamDeck, {
   type DialDownEvent,
   type DialRotateEvent,
   type DidReceiveSettingsEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type TouchTapEvent,
   type WillAppearEvent,
@@ -15,7 +16,15 @@ import { getDownloadFraction, type SortOrder } from "../steam/library";
 import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
 import { getCurrentSession, getRunningGame } from "../steam/running";
 import { getAppStates, peekAppStates } from "../steam/status";
-import { badgeFor, formatElapsed, type GamePagePage, librarySlots, type LibrarySlot, steamPageUrl } from "./common";
+import {
+  badgeFor,
+  collectionPickerItems,
+  formatElapsed,
+  type GamePagePage,
+  librarySlots,
+  type LibrarySlot,
+  steamPageUrl,
+} from "./common";
 
 /**
  * Per-dial settings for {@link LibraryDial}.
@@ -36,6 +45,9 @@ type LibraryDialSettings = {
 
   /** Ordering of the library the dial scrolls through. */
   sortOrder?: SortOrder;
+
+  /** Id of the Steam collection the dial scrolls through; empty or absent for the whole library. */
+  collection?: string;
 
   /**
    * What tapping the touch display opens. `"none"` leaves the tap doing nothing.
@@ -228,6 +240,21 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
   }
 
   /**
+   * Serves the property inspector's collection picker.
+   * @param ev Event arguments.
+   */
+  override async onSendToPlugin(
+    ev: SendToPluginEvent<{ event?: string; isRefresh?: boolean }, LibraryDialSettings>,
+  ): Promise<void> {
+    if (ev.payload?.event === "getCollections") {
+      await streamDeck.ui.sendToPropertyInspector({
+        event: "getCollections",
+        items: await collectionPickerItems(ev.payload.isRefresh === true),
+      });
+    }
+  }
+
+  /**
    * Moves the cursor by however far the dial turned, then redraws.
    *
    * `ticks` arrives signed and can be greater than one when the dial is spun quickly, so a fast
@@ -316,7 +343,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * @returns The combined slot list.
    */
   async #slots(settings: LibraryDialSettings): Promise<LibrarySlot[]> {
-    return librarySlots(settings.sortOrder ?? DEFAULT_SORT, settings.showInstalling !== false);
+    return librarySlots(settings.sortOrder ?? DEFAULT_SORT, settings.showInstalling !== false, settings.collection);
   }
 
   /**

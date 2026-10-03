@@ -1,13 +1,10 @@
 import streamDeck from "@elgato/streamdeck";
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 
+import { getActiveAccountId } from "./account";
 import { getObject, getString, parseBinVdf, type BinVdfObject } from "./binvdf";
 import { findSteam } from "./paths";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * The most recently unlocked achievement in one game, for whoever is currently logged into Steam.
@@ -27,45 +24,6 @@ export type LatestAchievement = {
 };
 
 const APP_ID = /^\d{1,10}$/;
-
-/** How long a resolved account id is trusted before being re-read from the registry. */
-const ACCOUNT_TTL = 5 * 60_000;
-
-let accountCache: { at: number; id: string | undefined } | undefined;
-
-/**
- * Resolves the account id (the 32-bit SteamID3 form) of whoever is currently logged into the local
- * Steam client. This is the id `appcache/stats` filenames carry, not the full 64-bit SteamID, and
- * it is what lets a shared machine's stat cache be matched to the account actually signed in.
- * @returns The account id, or `undefined` when nobody is signed in, or off Windows.
- */
-async function getActiveAccountId(): Promise<string | undefined> {
-  if (process.platform !== "win32") {
-    return undefined; // the registry key this reads is Windows-only
-  }
-
-  if (accountCache !== undefined && Date.now() - accountCache.at < ACCOUNT_TTL) {
-    return accountCache.id;
-  }
-
-  let id: string | undefined;
-  try {
-    const { stdout } = await execFileAsync(
-      "reg",
-      ["query", "HKCU\\Software\\Valve\\Steam\\ActiveProcess", "/v", "ActiveUser"],
-      { windowsHide: true, timeout: 5_000 },
-    );
-
-    const match = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout);
-    const value = match !== null ? Number.parseInt(match[1]!, 16) : 0;
-    id = value > 0 ? String(value) : undefined;
-  } catch {
-    id = undefined; // Steam not installed, not signed in, or the key is otherwise unreadable
-  }
-
-  accountCache = { at: Date.now(), id };
-  return id;
-}
 
 /**
  * How long a resolved achievement is trusted. Short enough that unlocking one while the key is on

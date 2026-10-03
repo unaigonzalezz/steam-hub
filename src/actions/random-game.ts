@@ -2,6 +2,7 @@ import streamDeck, {
   action,
   type DidReceiveSettingsEvent,
   type KeyDownEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type WillAppearEvent,
 } from "@elgato/streamdeck";
@@ -9,6 +10,7 @@ import streamDeck, {
 import { type ArtFit, type ArtStyle, renderKeyImage } from "../steam/artwork";
 import { getInstalledGames } from "../steam/library";
 import { launchGame } from "../steam/launch";
+import { collectionFilter, collectionPickerItems } from "./common";
 
 /**
  * Settings for {@link RandomGame}.
@@ -28,6 +30,9 @@ type RandomGameSettings = {
 
   /** Whether the key keeps showing the last pick instead of resetting. Defaults to on. */
   rememberLast?: boolean;
+
+  /** Id of the Steam collection to pick from; empty or absent for the whole library. */
+  collection?: string;
 };
 
 const DEFAULT_STYLE: ArtStyle = "logo";
@@ -60,7 +65,7 @@ export class RandomGame extends SingletonAction<RandomGameSettings> {
    */
   override async onKeyDown(ev: KeyDownEvent<RandomGameSettings>): Promise<void> {
     const { settings } = ev.payload;
-    const games = await getInstalledGames();
+    const games = (await getInstalledGames()).filter(await collectionFilter(settings.collection));
 
     if (games.length === 0) {
       streamDeck.logger.warn("Random key pressed with no installed games to choose from");
@@ -88,6 +93,21 @@ export class RandomGame extends SingletonAction<RandomGameSettings> {
     streamDeck.logger.info(`Random pick: ${pick.name} (${pick.appId})`);
     await ev.action.setSettings({ ...settings, lastAppId: pick.appId, lastGameName: pick.name });
     await ev.action.showOk();
+  }
+
+  /**
+   * Serves the property inspector's collection picker.
+   * @param ev Event arguments.
+   */
+  override async onSendToPlugin(
+    ev: SendToPluginEvent<{ event?: string; isRefresh?: boolean }, RandomGameSettings>,
+  ): Promise<void> {
+    if (ev.payload?.event === "getCollections") {
+      await streamDeck.ui.sendToPropertyInspector({
+        event: "getCollections",
+        items: await collectionPickerItems(ev.payload.isRefresh === true),
+      });
+    }
   }
 
   /**
