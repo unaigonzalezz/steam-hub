@@ -8,152 +8,191 @@
   </head>
 
   <body>
-    <sdpi-item label="Position">
-      <sdpi-textfield setting="index" placeholder="1" pattern="[0-9]*" maxlength="4"></sdpi-textfield>
-    </sdpi-item>
+    <details class="group" id="group-key" open>
+      <summary>This key</summary>
+      <div class="group-body">
+        <sdpi-item label="Position">
+          <sdpi-textfield setting="index" placeholder="1" pattern="[0-9]*" maxlength="4"></sdpi-textfield>
+        </sdpi-item>
 
-    <p class="hint">
-      This key shows the game at this position in your library. Number your keys 1, 2, 3… and the profile fills itself
-      in. A position past the end of the list stays blank.
-    </p>
+        <p class="hint" id="position-hint"></p>
 
-    <p class="hint">
-      <strong>Leave it empty</strong> and the key becomes the way in: it keeps the action icon and, when pressed, jumps
-      to the bundled Steam profile.
-    </p>
+        <sdpi-item label="Collection">
+          <sdpi-select
+            setting="collection"
+            datasource="getCollections"
+            show-refresh
+            default=""
+            loading="Reading your collections…"
+          ></sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Collection">
-      <sdpi-select
-        setting="collection"
-        datasource="getCollections"
-        show-refresh
-        default=""
-        loading="Reading your collections…"
-      ></sdpi-select>
-    </sdpi-item>
+        <sdpi-item>
+          <sdpi-button id="apply-collection">Use on every key of this page</sdpi-button>
+        </sdpi-item>
 
-    <sdpi-item>
-      <sdpi-button id="apply-collection">Use it on every key of this page</sdpi-button>
-    </sdpi-item>
+        <p class="hint" id="apply-status" hidden></p>
 
-    <p class="hint">
-      Numbers this key into one of your Steam collections instead of the whole library, so each profile or page can
-      hold a different one: favourites on one, co-op games on another. Only installed games show up, and dynamic
-      collections aren't listed, since Steam keeps no list of games for those.
-    </p>
+        <p class="hint">Give each page its own collection. Dynamic collections aren't listed.</p>
+      </div>
+    </details>
 
-    <p class="hint">
-      Not every Elgato device ships with a ready-made profile yet. If yours is missing one, every action above still
-      works, it just needs its keys laid out by hand, or a profile contributed by someone who owns that device, see
-      the
-      <a
-        onclick="
-          SDPIComponents.streamDeckClient.send('openUrl', {
-            url: 'https://github.com/unaigonzalezz/steam-hub/blob/master/CONTRIBUTING.md',
-          })
-        "
-        target="_blank"
-        rel="noopener noreferrer"
-        >contributing guide</a
-      >.
-    </p>
+    <details class="group" id="group-look">
+      <summary>
+        Appearance <span class="summary-note">image, title, status</span><span class="shared-tag">All keys</span>
+      </summary>
+      <div class="group-body">
+        <sdpi-item label="Image">
+          <sdpi-select setting="artStyle" global default="logo">
+            <option value="capsule">Vertical capsule</option>
+            <option value="header">Banner</option>
+            <option value="logo">Logo on background</option>
+            <option value="hero">Wide background</option>
+            <option value="none">No image</option>
+          </sdpi-select>
+        </sdpi-item>
 
-    <p class="section">Shared by every key of this action</p>
+        <sdpi-item label="Framing">
+          <sdpi-select setting="artFit" global default="fill">
+            <option value="fill">Fill the key</option>
+            <option value="fit">Show it all</option>
+          </sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Order by">
-      <sdpi-select setting="sortOrder" global default="name">
-        <option value="name">Name (A–Z)</option>
-        <option value="recent">Recently played</option>
-        <option value="size">Size on disk</option>
-      </sdpi-select>
-    </sdpi-item>
+        <sdpi-item label="Title">
+          <sdpi-checkbox setting="showTitle" global label="Write the game name"></sdpi-checkbox>
+        </sdpi-item>
 
-    <sdpi-item label="Image">
-      <sdpi-select setting="artStyle" global default="logo">
-        <option value="capsule">Vertical capsule</option>
-        <option value="header">Banner</option>
-        <option value="logo">Logo on background</option>
-        <option value="hero">Wide background</option>
-        <option value="none">No image</option>
-      </sdpi-select>
-    </sdpi-item>
+        <sdpi-item label="Status">
+          <sdpi-checkbox setting="showStatus" global default="true" label="Frame while running or updating"></sdpi-checkbox>
+        </sdpi-item>
 
-    <sdpi-item label="Framing">
-      <sdpi-select setting="artFit" global default="fill">
-        <option value="fill">Fill the key</option>
-        <option value="fit">Show it all</option>
-      </sdpi-select>
-    </sdpi-item>
+        <sdpi-item label="Play time">
+          <sdpi-checkbox setting="showPlayTime" global label="Count up while the game runs"></sdpi-checkbox>
+        </sdpi-item>
+      </div>
+    </details>
 
-    <sdpi-item label="Title">
-      <sdpi-checkbox setting="showTitle" global label="Write the game name on the key"></sdpi-checkbox>
-    </sdpi-item>
+    <details class="group" id="group-list">
+      <summary>Library <span class="summary-note">order, downloads</span><span class="shared-tag">All keys</span></summary>
+      <div class="group-body">
+        <sdpi-item label="Order by">
+          <sdpi-select setting="sortOrder" global default="name">
+            <option value="name">Name (A–Z)</option>
+            <option value="recent">Recently played</option>
+            <option value="size">Size on disk</option>
+          </sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Status">
-      <sdpi-checkbox
-        setting="showStatus"
-        global
-        default="true"
-        label="Frame the key while running or updating"
-      ></sdpi-checkbox>
-    </sdpi-item>
+        <sdpi-item label="Downloads">
+          <sdpi-checkbox setting="showInstalling" global default="true" label="Show new installs in progress"></sdpi-checkbox>
+        </sdpi-item>
 
-    <sdpi-item label="New installs">
-      <sdpi-checkbox
-        setting="showInstalling"
-        global
-        default="true"
-        label="Add a slot while a game you don't have yet is downloading"
-      ></sdpi-checkbox>
-    </sdpi-item>
+        <p class="hint">They go first while downloading, moving the rest down by one.</p>
 
-    <p class="hint">
-      That slot fills in with an amber ring as the download progresses, and sits at the front of the list, shifting
-      every other slot down by one for as long as it's there.
-    </p>
+        <sdpi-item label="Not installed">
+          <sdpi-checkbox setting="showMissing" global label="Show them in black and white"></sdpi-checkbox>
+        </sdpi-item>
 
-    <sdpi-item label="Play time">
-      <sdpi-checkbox setting="showPlayTime" global label="Show how long the running game has been open"></sdpi-checkbox>
-    </sdpi-item>
+        <p class="hint">Only on keys with a collection. Pressing one opens Steam's install dialog.</p>
+      </div>
+    </details>
 
-    <p class="hint">
-      Adds a line under the key that is actually running, not merely updating, counting up from when Steam launched
-      it. Restarting the plugin keeps the count.
-    </p>
+    <details class="group" id="group-press">
+      <summary>
+        Press <span class="summary-note">long press, empty keys</span><span class="shared-tag">All keys</span>
+      </summary>
+      <div class="group-body">
+        <sdpi-item label="Long press">
+          <sdpi-select setting="longPress" global default="none">
+            <option value="none">Nothing, always launch</option>
+            <option value="store">Open the store page</option>
+            <option value="hub">Open the Community Hub</option>
+            <option value="uninstall">Open the uninstall dialog</option>
+          </sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Long press">
-      <sdpi-select setting="longPress" global default="none">
-        <option value="none">Nothing, always launch</option>
-        <option value="store">Open the store page</option>
-        <option value="hub">Open the Community Hub</option>
-        <option value="uninstall">Open the uninstall dialog</option>
-      </sdpi-select>
-    </sdpi-item>
+        <p class="hint">A quick tap always launches the game.</p>
 
-    <p class="hint">
-      A tap always launches the game shown on the key. Set this to hold the key down instead for the page above; a
-      quick release still launches as usual.
-    </p>
+        <sdpi-item label="Empty keys">
+          <sdpi-file setting="emptyImage" global accept="image/png, image/jpeg" label="Choose image…"></sdpi-file>
+        </sdpi-item>
 
-    <sdpi-item label="Empty keys">
-      <sdpi-file setting="emptyImage" global accept="image/png, image/jpeg" label="Choose image…"></sdpi-file>
-    </sdpi-item>
+        <sdpi-item>
+          <sdpi-button id="reset-empty" disabled>Reset to the default image</sdpi-button>
+        </sdpi-item>
+      </div>
+    </details>
 
-    <sdpi-item>
-      <sdpi-button id="reset-empty" disabled>Reset to the default image</sdpi-button>
-    </sdpi-item>
+    <details class="group" id="group-help">
+      <summary>Help &amp; support</summary>
+      <div class="group-body">
+        <p class="hint">
+          No ready-made profile for your device? Every action still works, the keys just need laying out by hand. See
+          the
+          <a
+            onclick="
+              SDPIComponents.streamDeckClient.send('openUrl', {
+                url: 'https://github.com/unaigonzalezz/steam-hub/blob/master/CONTRIBUTING.md',
+              })
+            "
+            target="_blank"
+            rel="noopener noreferrer"
+            >contributing guide</a
+          >
+          to share one.
+        </p>
+
+        <sdpi-item label="Support">
+          <div class="support-block">
+            <div class="support-links">
+              <a
+                onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+              </a>
+
+              <a
+                onclick="
+                  SDPIComponents.streamDeckClient.send('openUrl', {
+                    url: 'https://github.com/unaigonzalezz/steam-hub',
+                  })
+                "
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+              </a>
+            </div>
+
+            <p class="support-text">
+              If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the
+              project on GitHub ⭐.
+            </p>
+
+            <p class="support-text">
+              Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+              future updates.
+            </p>
+          </div>
+        </sdpi-item>
+      </div>
+    </details>
 
     <script>
       (() => {
         const client = SDPIComponents.streamDeckClient;
         const reset = document.getElementById("reset-empty");
+        const positionHint = document.getElementById("position-hint");
 
         /**
          * The button is only useful once an image has actually been picked, so it stays
          * disabled until then, otherwise it reads as something that does nothing. The title
          * spells out why, since a disabled control with no explanation just looks broken.
          */
-        function sync(settings) {
+        function syncGlobals(settings) {
           const hasCustomImage = ((settings ?? {}).emptyImage ?? "").trim() !== "";
 
           reset.disabled = !hasCustomImage;
@@ -162,59 +201,79 @@
             : "No custom image is set, there is nothing to reset yet.";
         }
 
+        /**
+         * One hint for the position field, worded for what it currently holds, instead of two
+         * paragraphs covering both cases at once.
+         */
+        function syncKey(settings) {
+          const index = String((settings ?? {}).index ?? "").trim();
+
+          positionHint.textContent = /^[1-9]\d*$/.test(index)
+            ? `Shows game #${index} of the list. Past the end, the key stays blank.`
+            : "Number your keys 1, 2, 3… Left empty, this key opens the Steam profile instead.";
+        }
+
         reset.addEventListener("click", async () => {
           // Global settings are stored whole, so the rest has to be carried across.
           const globals = (await client.getGlobalSettings()) ?? {};
           await client.setGlobalSettings({ ...globals, emptyImage: "" });
-          sync({});
+          syncGlobals({});
         });
 
-        client.didReceiveGlobalSettings.subscribe((ev) => sync(ev.payload?.settings));
-        client.getGlobalSettings().then(sync);
+        client.didReceiveGlobalSettings.subscribe((ev) => syncGlobals(ev.payload?.settings));
+        client.getGlobalSettings().then(syncGlobals);
+
+        // Settings the inspector writes itself don't come back as an event, so the field is
+        // watched directly as well.
+        syncKey({});
+        client.didReceiveSettings.subscribe((ev) => syncKey(ev.payload?.settings));
+        client.getSettings().then((payload) => syncKey(payload?.settings));
+        document.querySelector('sdpi-textfield[setting="index"]').addEventListener("input", (ev) => {
+          syncKey({ index: ev.target.value });
+        });
 
         // Read back from the stored settings rather than the select, so what gets copied is what
         // this key actually uses, even before the picker has finished loading its list.
+        const applyStatus = document.getElementById("apply-status");
+        let applyTimer;
+
         document.getElementById("apply-collection").addEventListener("click", async () => {
           const { settings } = (await client.getSettings()) ?? {};
           client.send("sendToPlugin", { event: "applyCollection", collection: settings?.collection ?? "" });
         });
+
+        // The plugin answers with what the button actually did, shown for a few seconds so a click
+        // never goes by without a visible result.
+        client.sendToPropertyInspector.subscribe((ev) => {
+          if (ev.payload?.event !== "applyResult") {
+            return;
+          }
+
+          applyStatus.textContent = ev.payload.text ?? "";
+          applyStatus.hidden = false;
+          clearTimeout(applyTimer);
+          applyTimer = setTimeout(() => (applyStatus.hidden = true), 4000);
+        });
+
+        // Remember which groups were left open. Storage can be unavailable, in which case every
+        // inspector simply opens with the defaults.
+        for (const group of document.querySelectorAll("details.group")) {
+          const key = `steam-hub.show-installed.${group.id}`;
+
+          try {
+            const stored = localStorage.getItem(key);
+            if (stored !== null) {
+              group.open = stored === "open";
+            }
+          } catch {}
+
+          group.addEventListener("toggle", () => {
+            try {
+              localStorage.setItem(key, group.open ? "open" : "closed");
+            } catch {}
+          });
+        }
       })();
     </script>
-
-    <sdpi-item label="Support">
-      <div class="support-block">
-        <div class="support-links">
-          <a
-            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
-          </a>
-
-          <a
-            onclick="
-              SDPIComponents.streamDeckClient.send('openUrl', {
-                url: 'https://github.com/unaigonzalezz/steam-hub',
-              })
-            "
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
-          </a>
-        </div>
-
-        <p class="support-text">
-          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
-          GitHub ⭐.
-        </p>
-
-        <p class="support-text">
-          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
-          future updates.
-        </p>
-      </div>
-    </sdpi-item>
   </body>
 </html>

@@ -54,7 +54,7 @@ Turns a whole profile into a gallery of your library. Give each key a **position
 
 Sort order (name, most recently played, or size), art style, and title all live in one shared settings panel: set them once on any key of the profile and every other key follows.
 
-Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use it on every key of this page** to copy it across, then repeat on another page or profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. Only installed games appear, and dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
+Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use it on every key of this page** to copy it across, then repeat on another page or profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. By default only installed games appear; turn on **Not installed** and the rest of the collection follows them, in black and white, most recently played first, and pressing one opens Steam's install dialog. Dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
 
 A key left with no position doubles as the way in: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile.
 

@@ -18,6 +18,7 @@ import { getDownloadFraction, type SortOrder } from "../steam/library";
 import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
 import { getCurrentSession, getRunningGame } from "../steam/running";
 import { getAppStates, peekAppStates } from "../steam/status";
+import { lookupStoreApp } from "../steam/store";
 import {
   badgeFor,
   collectionPickerItems,
@@ -31,7 +32,7 @@ import {
 } from "./common";
 
 /** How long a key takes over to show a just-unlocked achievement before returning to its own art. */
-const FLASH_MS = 3_000;
+const FLASH_MS = 5_000;
 
 /**
  * Per-key settings for {@link ShowInstalled}: the slot this key stands for, and which list it is a
@@ -82,6 +83,13 @@ type SharedSettings = {
    * long as it is there; turning this off keeps slot numbers stable instead. Defaults to on.
    */
   showInstalling?: boolean;
+
+  /**
+   * Whether a key pointed at a collection also lists that collection's games that are not installed,
+   * in black and white after every installed one, and opens Steam's install dialog when pressed. Off by
+   * default: a large collection would otherwise fill a page with games that cannot be played yet.
+   */
+  showMissing?: boolean;
 
   /** Absolute path to an image shown on positions with no game behind them. */
   emptyImage?: string;
@@ -270,7 +278,10 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
         return;
 
       case "applyCollection":
-        await this.#applyCollection(ev.action.device.id, ev.payload.collection ?? "");
+        await streamDeck.ui.sendToPropertyInspector({
+          event: "applyResult",
+          text: await this.#applyCollection(ev.action.device.id, ev.action.id, ev.payload.collection ?? ""),
+        });
         return;
 
       default:
@@ -284,30 +295,46 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    * Points every numbered key showing on a device at the same collection. Only keys currently on
    * screen are reachable, which is exactly the page the user is setting up.
    * @param deviceId Device whose keys to update.
+   * @param sourceId Key the property inspector is open for, which already has the collection and is
+   * left out of the counts, so they describe what the button did to the rest of the page.
    * @param collection Collection id, or `""` for the whole library.
+   * @returns A one-line summary for the property inspector.
    */
-  async #applyCollection(deviceId: string, collection: string): Promise<void> {
-    let count = 0;
+  async #applyCollection(deviceId: string, sourceId: string, collection: string): Promise<string> {
+    let changed = 0;
+    let already = 0;
 
     await Promise.all(
       [...this.actions].map(async (target) => {
-        if (!target.isKey() || target.device.id !== deviceId) {
+        if (!target.isKey() || target.device.id !== deviceId || target.id === sourceId) {
           return;
         }
 
         const settings = await target.getSettings();
-        if (parseIndex(settings) === undefined || (settings.collection ?? "") === collection) {
-          return; // the entry key has no list of its own, and a key already set needs nothing
+        if (parseIndex(settings) === undefined) {
+          return; // the entry key has no list of its own
+        }
+
+        if ((settings.collection ?? "") === collection) {
+          already++;
+          return;
         }
 
         const next = { ...settings, collection };
         await target.setSettings(next);
         await this.#draw(target, next); // a plugin-side write raises no settings event to redraw on
-        count++;
+        changed++;
       }),
     );
 
-    streamDeck.logger.info(`Pointed ${count} key(s) at collection "${collection || "whole library"}"`);
+    streamDeck.logger.info(`Pointed ${changed} key(s) at collection "${collection || "whole library"}"`);
+
+    if (changed === 0) {
+      return already === 0 ? "No other numbered keys on this page." : "Every key on this page already uses it.";
+    }
+
+    const keys = `${changed} more key${changed === 1 ? "" : "s"}`;
+    return already === 0 ? `Applied to ${keys}.` : `Applied to ${keys}, ${already} already had it.`;
   }
 
   /**
@@ -325,6 +352,18 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
 
     if (slot.installing) {
       await target.showAlert(); // still downloading, nothing to launch yet
+      return;
+    }
+
+    if (slot.missing === true) {
+      // Steam's own dialog, where the user picks a library and confirms; nothing starts on its own.
+      try {
+        await openSteamUrl(`steam://install/${slot.appId}`);
+        await target.showOk();
+      } catch (err) {
+        streamDeck.logger.error(`Could not open the install dialog for app ${slot.appId}`, err);
+        await target.showAlert();
+      }
       return;
     }
 
@@ -351,8 +390,8 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       return; // a numbered slot with no game is not a broken key, so it stays silent
     }
 
-    if (slot.installing) {
-      await target.showAlert(); // still downloading, nothing to open a page for yet
+    if (slot.installing || (slot.missing === true && page === "uninstall")) {
+      await target.showAlert(); // still downloading, or nothing on disk to uninstall
       return;
     }
 
@@ -516,6 +555,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       shared.sortOrder ?? DEFAULT_SHARED.sortOrder,
       shared.showInstalling !== false,
       settings.collection,
+      shared.showMissing === true,
     );
 
     return slots[index - 1]; // 1-based, so the numbers on the keys read the way people count
@@ -563,6 +603,11 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     if (slot.installing) {
       this.#downloads.set(target.id, target);
       await this.#drawInstalling(target, slot, shared);
+      return;
+    }
+
+    if (slot.missing === true) {
+      await this.#drawMissing(target, slot, shared);
       return;
     }
 
@@ -631,6 +676,36 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
 
     const nameTitle = wrapTitle(slot.name, 2);
     const title = percent === undefined ? nameTitle : `${nameTitle}\n${percent}%`;
+
+    await this.#paint(target, signature, image, title);
+  }
+
+  /**
+   * Paints a key for a game from the key's collection that is not installed: the same art as any
+   * other game, in black and white, since a press opens Steam's install dialog rather than launching.
+   * @param target Key to draw on.
+   * @param slot The not-installed entry.
+   * @param shared Shared settings, already read by the caller.
+   */
+  async #drawMissing(target: KeyAction<SlotSettings>, slot: LibrarySlot, shared: SharedSettings): Promise<void> {
+    const style = shared.artStyle ?? DEFAULT_SHARED.artStyle;
+    const wantsTitle = shared.showTitle === true || style === "none";
+
+    // Nothing local knows a game that was never installed here, so its name comes from the store,
+    // and only when the key is actually going to write it: the art carries the logo regardless.
+    const name = wantsTitle ? ((await lookupStoreApp(slot.appId))?.name ?? slot.name) : "";
+    const title = wantsTitle ? wrapTitle(name) : "";
+    const signature = `missing:${slot.appId}:${style}:${shared.artFit ?? DEFAULT_SHARED.artFit}:${title}`;
+
+    if (this.#drawn.get(target.id) === signature) {
+      return;
+    }
+
+    const image =
+      style === "none"
+        ? await renderEmptyKey(shared.emptyImage)
+        : ((await renderKeyImage(slot.appId, style, shared.artFit ?? DEFAULT_SHARED.artFit, "missing")) ??
+          (await renderEmptyKey(shared.emptyImage)));
 
     await this.#paint(target, signature, image, title);
   }

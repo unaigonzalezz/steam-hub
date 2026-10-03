@@ -152,7 +152,7 @@ let tempCounter = 0;
 const STATUS_COLOURS = {
   running: [0x35, 0x9b, 0x43],
   updating: [0xf5, 0xa6, 0x23],
-} as const satisfies Record<Exclude<StatusBadge, "idle">, readonly [number, number, number]>;
+} as const satisfies Record<Exclude<StatusBadge, "idle" | "missing">, readonly [number, number, number]>;
 
 /** Border width in key pixels, heavy enough to read across the room, light enough to frame. */
 const BORDER_WIDTH = 11;
@@ -176,9 +176,10 @@ const BORDER_INNER_RADIUS = 20;
 const BORDER_SAMPLES = 4;
 
 /**
- * Whether to frame the key, and in what colour.
+ * Whether to frame the key, and in what colour. `missing` is the odd one out: rather than a frame,
+ * it turns the whole key black and white, for a game that is not installed at all.
  */
-export type StatusBadge = "idle" | "running" | "updating";
+export type StatusBadge = "idle" | "running" | "updating" | "missing";
 
 /**
  * Renders the key image for a game, composited and encoded ready for `setImage`.
@@ -512,6 +513,10 @@ function outline(image: Image, badge: StatusBadge, progress?: number): Image {
     return image;
   }
 
+  if (badge === "missing") {
+    return markMissing(image);
+  }
+
   const [r, g, b] = STATUS_COLOURS[badge];
   const { data, width, height } = image.bitmap;
 
@@ -585,6 +590,26 @@ function outline(image: Image, badge: StatusBadge, progress?: number): Image {
         paintBorder(data, width, x, y, cr, cg, cb, coverage);
       }
     }
+  }
+
+  return image;
+}
+
+/**
+ * Turns a key black and white, in place: the look of a game from a collection that is not
+ * installed, otherwise drawn exactly like every other game so the page keeps one style.
+ * @param image Image to convert.
+ * @returns The same image, for chaining.
+ */
+function markMissing(image: Image): Image {
+  const { data } = image.bitmap;
+
+  for (let offset = 0; offset < data.length; offset += 4) {
+    // Rec. 601 luma: cheap, and plenty for art that only needs to read as "not available".
+    const luma = Math.round(0.299 * data[offset]! + 0.587 * data[offset + 1]! + 0.114 * data[offset + 2]!);
+    data[offset] = luma;
+    data[offset + 1] = luma;
+    data[offset + 2] = luma;
   }
 
   return image;

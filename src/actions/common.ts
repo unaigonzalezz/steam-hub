@@ -2,6 +2,7 @@ import { DeviceType } from "@elgato/streamdeck";
 
 import { pluginPath, renderImageFile, type StatusBadge } from "../steam/artwork";
 import { findCollection, getCollections } from "../steam/collections";
+import { getPlayHistory } from "../steam/history";
 import { getInstalledGames, getInstallingGames, sortGames, type SortOrder } from "../steam/library";
 
 /**
@@ -144,6 +145,12 @@ export type LibrarySlot = {
   /** Whether this is a first install still in progress, rather than a launchable game. */
   installing: boolean;
 
+  /**
+   * Whether this is a game from the chosen collection that is not on this machine at all. Its
+   * `name` is only a placeholder, `App <id>`, since nothing local knows it; see `resolveGameName`.
+   */
+  missing?: boolean;
+
   /** Download progress in `[0, 1]`, when known. Only ever set while `installing` is `true`. */
   fraction?: number;
 };
@@ -161,12 +168,16 @@ export type LibrarySlot = {
  * @param collection Id of a Steam collection to narrow the list down to; empty or `undefined` for
  * the whole library. A collection that no longer exists yields an empty list rather than quietly
  * falling back to everything, so the keys read as "this needs looking at".
+ * @param includeMissing Whether the collection's games that are not installed get a slot too, after
+ * every installed one. Ignored without a collection: there is no local list of every game an account
+ * owns to draw them from.
  * @returns The combined list.
  */
 export async function librarySlots(
   sortOrder: SortOrder,
   includeInstalling: boolean,
   collection?: string,
+  includeMissing = false,
 ): Promise<LibrarySlot[]> {
   const inCollection = await collectionFilter(collection);
 
@@ -185,7 +196,32 @@ export async function librarySlots(
     installing: false,
   }));
 
-  return [...installing, ...installed];
+  const missing = includeMissing && collection ? await missingSlots(collection, [...installing, ...installed]) : [];
+
+  return [...installing, ...installed, ...missing];
+}
+
+/**
+ * Lists a collection's games that are on neither list already, most recently played first, since
+ * that is the only ordering local data can give a game that is not installed: no name, no size.
+ * Never-played games follow by app id, which keeps the order stable from one poll to the next.
+ * @param collection Collection id.
+ * @param present Slots already listed, installed or installing.
+ * @returns The remaining games as slots.
+ */
+async function missingSlots(collection: string, present: LibrarySlot[]): Promise<LibrarySlot[]> {
+  const found = await findCollection(collection);
+  if (found === undefined) {
+    return [];
+  }
+
+  const listed = new Set(present.map((slot) => slot.appId));
+  const history = await getPlayHistory();
+
+  return [...found.appIds]
+    .filter((appId) => !listed.has(appId) && /^\d{1,10}$/.test(appId))
+    .sort((a, b) => (history.get(b) ?? 0) - (history.get(a) ?? 0) || Number(a) - Number(b))
+    .map((appId) => ({ appId, name: `App ${appId}`, installing: false, missing: true }));
 }
 
 /**
@@ -209,19 +245,23 @@ export async function collectionFilter(collection: string | undefined): Promise<
 
 /**
  * Builds the items for a property inspector's collection picker: the whole library first, then
- * every static collection the signed-in account has, by name.
+ * every static collection the signed-in account has, by name. Each one says how many of its games
+ * are installed out of how many it holds, since only the installed ones show up by default.
  * @param refresh Whether to re-read the collections rather than reuse the last read.
  * @returns Items for the property inspector's select.
  */
 export async function collectionPickerItems(refresh: boolean): Promise<{ value: string; label: string }[]> {
-  const collections = await getCollections(refresh);
+  const [collections, games] = await Promise.all([getCollections(refresh), getInstalledGames(refresh)]);
+  const installed = new Set(games.map((game) => game.appId));
 
   return [
-    { value: "", label: "Whole library" },
-    ...collections.map((collection) => ({
-      value: collection.id,
-      label: `${collection.name} (${collection.appIds.size})`,
-    })),
+    { value: "", label: `Whole library (${installed.size})` },
+    ...collections.map((collection) => {
+      const total = collection.appIds.size;
+      const here = [...collection.appIds].filter((appId) => installed.has(appId)).length;
+
+      return { value: collection.id, label: `${collection.name} (${here} of ${total})` };
+    }),
   ];
 }
 
