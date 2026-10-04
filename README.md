@@ -180,8 +180,21 @@ Pull requests are welcome on [GitHub](https://github.com/unaigonzalezz/steam-hub
 
 ---
 
+## Acknowledgements
+
+Text drawn on the keys (page numbers, play time, download progress and game names) uses the **Gila** typeface by **Khurasan**, free for personal and commercial use.
+
+Key icons are built from these icon sets:
+
+- [IconaMoon](https://github.com/dariushhpg1/IconaMoon) by Dariush Habibpour, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- [Sargam Icons](https://github.com/planetabhi/sargam-icons) by Abhimanyu Rana, licensed under [MIT](https://opensource.org/licenses/MIT).
+
+---
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
+
+The Gila font files in `com.unai-gonzalez.steam-hub.sdPlugin/fonts/` belong to their author and are not covered by the MIT license.
 
 ---
