@@ -1,6 +1,6 @@
 import { DeviceType } from "@elgato/streamdeck";
 
-import { pluginPath, renderImageFile, type StatusBadge } from "../steam/artwork";
+import { LABEL_LINE_LENGTH, pluginPath, renderCaption, renderImageFile, type StatusBadge } from "../steam/artwork";
 import { findCollection, getCollections } from "../steam/collections";
 import { getPlayHistory } from "../steam/history";
 import { getInstalledGames, getInstallingGames, sortGames, type SortOrder } from "../steam/library";
@@ -44,8 +44,7 @@ type Drawable = {
 };
 
 /**
- * Paints a key whose look is chosen by a named value rather than by a game, the Steam shortcuts
- * and the status keys.
+ * Paints a key whose look is chosen by a named value rather than by a game, the Steam shortcuts.
  *
  * Each value gets its own file under the action's image folder, so any of them can be given custom
  * artwork by overwriting one PNG. A missing or unreadable file leaves the manifest's icon in place
@@ -53,13 +52,48 @@ type Drawable = {
  * @param target Key to draw on.
  * @param folder Name of the action's folder under `imgs/actions`.
  * @param value Value selecting the image, used as the filename.
- * @param title Title to write, empty for none.
+ * @param text Text to draw on the key, empty for none.
  */
-export async function drawNamedKey(target: Drawable, folder: string, value: string, title: string): Promise<void> {
+export async function drawNamedKey(target: Drawable, folder: string, value: string, text: string): Promise<void> {
   const image = await renderImageFile(pluginPath("imgs", "actions", folder, `${value}.png`));
+  await paintKey(target, image, text, folder);
+}
 
-  await target.setImage(image);
-  await target.setTitle(title);
+/**
+ * Paints a key with its text drawn into the image, in the plugin's own font and style, the way
+ * every key but the library's numbered ones writes text; those can also write it as a title.
+ *
+ * Leaves the Stream Deck title empty, which also clears a title from versions that wrote one.
+ * @param target Key to draw on.
+ * @param image The key's image, or `undefined` for the action's own icon from the manifest.
+ * @param text Text to draw, empty for none. Line breaks are ignored; it is wrapped to fit.
+ * @param folder The action's folder under `imgs/actions`, whose `key@2x.png`, the manifest's icon,
+ * is drawn onto when `image` is `undefined` and there is text to show.
+ * @param options `clearTitle: false` leaves the title alone, for a key whose title may be the user's.
+ */
+export async function paintKey(
+  target: Drawable,
+  image: string | undefined,
+  text: string,
+  folder: string,
+  options: { clearTitle?: boolean } = {},
+): Promise<void> {
+  const base = text === "" ? image : (image ?? (await renderImageFile(pluginPath("imgs", "actions", folder, "key@2x.png"))));
+
+  await target.setImage(text === "" || base === undefined ? image : renderCaption(base, { label: drawnLines(text) }));
+
+  if (options.clearTitle !== false) {
+    await target.setTitle("");
+  }
+}
+
+/**
+ * Wraps text for drawing into a key, which fits more per line than a title.
+ * @param text The text; line breaks in it are treated as spaces.
+ * @returns At most two lines.
+ */
+export function drawnLines(text: string): string[] {
+  return wrapTitle(text.replace(/\s*\n\s*/g, " "), 2, LABEL_LINE_LENGTH).split("\n");
 }
 
 /** Roughly how many characters of the Stream Deck's default title font fit across one key. */

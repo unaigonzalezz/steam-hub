@@ -122,7 +122,7 @@ type SharedSettings = {
 
   /**
    * Whether the play time, download percentage and game name are drawn into the key image or
-   * written as the Stream Deck title; see {@link TextStyle}. Shared with the page keys. Drawn unless
+   * written as the Stream Deck title; see {@link TextStyle}. Only these keys offer the choice, every other key draws its text. Drawn unless
    * set to `title`.
    */
   textStyle?: TextStyle;
@@ -925,8 +925,15 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     this.#cancelFlash(target.id);
 
     const image = await renderAchievementKey(appId, achievement.icon);
-    await target.setImage(image);
-    await target.setTitle(wrapTitle(achievement.name));
+
+    // The achievement's name follows the same text style as the rest of the key.
+    if (textStyleOf(await getShared()) === "drawn" && image !== undefined) {
+      await target.setImage(renderCaption(image, { label: drawnName(achievement.name) }));
+      await target.setTitle("");
+    } else {
+      await target.setImage(image);
+      await target.setTitle(wrapTitle(achievement.name));
+    }
     this.#drawn.set(target.id, `flash:${appId}:${achievement.icon}`);
 
     this.#flashTimers.set(

@@ -12,7 +12,6 @@ import streamDeck, {
 import { pluginPath, renderCaption, renderImageFile } from "../steam/artwork";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { addPageListener, describePage, goToFirstPage, type PageInfo, removePageListener, turnPage } from "./paging";
-import { getTextStyle } from "./text-style";
 
 /**
  * Settings for {@link PageTurn}.
@@ -51,15 +50,6 @@ const REPAINT_DELAY_MS = 50;
 export class PageTurn extends SingletonAction<PageTurnSettings> {
   /** Bound so the same reference can be added to and removed from the shared listeners. */
   readonly #onChange = (): void => this.#scheduleRepaint();
-
-  /**
-   * Initialises the action, repainting its keys when the shared text style changes. Any global
-   * change triggers it; a repaint that changes nothing writes nothing.
-   */
-  constructor() {
-    super();
-    streamDeck.settings.onDidReceiveGlobalSettings(() => this.#scheduleRepaint());
-  }
 
   #listening = false;
   #repaintTimer: NodeJS.Timeout | undefined;
@@ -225,9 +215,9 @@ export class PageTurn extends SingletonAction<PageTurnSettings> {
   }
 
   /**
-   * Paints a key: its arrow, with where the device is when asked for, drawn onto it or written as the
-   * title depending on the shared text style; or just the "back" arrow when a press would leave the
-   * library, since a page number on a way out would read as a page to turn to.
+   * Paints a key: its arrow, with where the device is drawn onto it when asked for, or just the
+   * "back" arrow when a press would leave the library, since a page number on a way out would read
+   * as a page to turn to.
    * @param target Key to draw on.
    * @param settings The key's settings.
    */
@@ -236,8 +226,7 @@ export class PageTurn extends SingletonAction<PageTurnSettings> {
     const leaves = leavesOnPress(settings, info);
     const image = leaves ? "back" : settings.direction === "prev" ? "prev" : "next";
     const position = leaves || info === undefined || settings.showPosition === false ? undefined : info;
-    const drawn = (await getTextStyle()) === "drawn";
-    const signature = `${image}:${position === undefined ? "" : `${position.page}/${position.count}`}:${drawn}`;
+    const signature = `${image}:${position === undefined ? "" : `${position.page}/${position.count}`}`;
 
     if (this.#drawn.get(target.id) === signature) {
       return;
@@ -246,18 +235,12 @@ export class PageTurn extends SingletonAction<PageTurnSettings> {
     // Each look has its own file, so any of them can be given custom art by overwriting one PNG.
     const base = await renderImageFile(pluginPath("imgs", "actions", "page", `${image}.png`));
 
-    if (drawn && base !== undefined && position !== undefined) {
-      await target.setImage(
-        renderCaption(base, {
-          main: String(position.page + 1),
-          suffix: `/${position.count}`,
-        }),
-      );
-      await target.setTitle("");
-    } else {
-      await target.setImage(base);
-      await target.setTitle(position === undefined ? "" : `${position.page + 1} / ${position.count}`);
-    }
+    await target.setImage(
+      base === undefined || position === undefined
+        ? base
+        : renderCaption(base, { main: String(position.page + 1), suffix: `/${position.count}` }),
+    );
+    await target.setTitle(""); // clears the title earlier versions wrote the position in
 
     this.#drawn.set(target.id, signature);
   }

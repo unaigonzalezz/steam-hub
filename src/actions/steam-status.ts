@@ -10,14 +10,13 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 
 import { getActiveAvatarPath } from "../steam/account";
-import { type AvatarEffect, LABEL_LINE_LENGTH, pluginPath, renderAvatarKey, renderCaption } from "../steam/artwork";
+import { type AvatarEffect, pluginPath, renderAvatarKey } from "../steam/artwork";
 import { openSteamUrl } from "../steam/launch";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { exists } from "../steam/paths";
 import { getPersonaState, type PersonaState } from "../steam/persona";
 import { getRunningGame } from "../steam/running";
-import { wrapTitle } from "./common";
-import { getTextStyle } from "./text-style";
+import { paintKey } from "./common";
 
 /**
  * The states Steam's own protocol handler accepts.
@@ -116,7 +115,6 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
   readonly #onPoll = (): Promise<void> => this.#redrawAll();
 
   #listening = false;
-  #watchingStyle = false;
 
   /** What each key currently shows, so a poll only repaints what actually changed. */
   readonly #drawn = new Map<string, string>();
@@ -135,11 +133,6 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
-    }
-
-    if (!this.#watchingStyle) {
-      this.#watchingStyle = true;
-      streamDeck.settings.onDidReceiveGlobalSettings(() => void this.#redrawAll()); // the shared text style
     }
 
     if (ev.action.isKey()) {
@@ -272,39 +265,34 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
   }
 
   /**
-   * Paints a key: the signed-in user's avatar inside the status frame, with the bubble of the state
-   * it shows, the current one when cycling, its own when set to one. The state's name, when asked
-   * for, is drawn in or written as the title like every other key's text, following the shared text
-   * style.
+   * Paints a key: the signed-in user's avatar inside the frame of the state it shows, the current
+   * one when cycling, its own when set to one. The state's name, or in game the game's, is drawn on
+   * when asked for.
    * @param target Key to draw on.
    * @param settings The key's settings.
    */
   async #draw(target: KeyAction<SteamStatusSettings>, settings: SteamStatusSettings): Promise<void> {
     const shown: PersonaState = modeOf(settings) === "cycle" ? await this.#currentState() : stateOf(settings);
     const name = settings.showTitle === true ? await nameFor(shown) : "";
-    const drawn = (await getTextStyle()) === "drawn";
 
     // Each state has its own frame, so any of them can be redrawn by overwriting one PNG; a state
-    // without one falls back to the shared frame.
-    const stateFrame = pluginPath("imgs", "actions", "status", "frame", `${shown}.png`);
+    // without one falls back to the online frame.
+    const frame = (state: PersonaState): string => pluginPath("imgs", "actions", "status", "frame", `${state}.png`);
     const art = await renderAvatarKey({
       avatar: await getActiveAvatarPath(),
-      frame: (await exists(stateFrame)) ? stateFrame : pluginPath("imgs", "actions", "status", "frame.png"),
+      frame: (await exists(frame(shown))) ? frame(shown) : frame("online"),
       effect: EFFECTS[shown],
     });
 
-    // The rendered image is a data URI cached per file version, so comparing it catches a new avatar,
-    // frame or bubble as well as a new state.
-    const signature = `${shown}:${name}:${drawn}:${art}`;
+    // The rendered image is a data URI cached per file version, so comparing it catches a new avatar
+    // or frame as well as a new state.
+    const signature = `${shown}:${name}:${art}`;
     if (this.#drawn.get(target.id) === signature) {
       return;
     }
     this.#drawn.set(target.id, signature);
 
-    // Wrapped like the library keys' names, since a game's can be long.
-    const label = name === "" ? [] : wrapTitle(name, 2, LABEL_LINE_LENGTH).split("\n");
-    await target.setImage(drawn && label.length > 0 ? renderCaption(art, { label }) : art);
-    await target.setTitle(drawn ? "" : wrapTitle(name));
+    await paintKey(target, art, name, "status");
   }
 }
 

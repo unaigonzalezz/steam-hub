@@ -16,7 +16,7 @@ import { findGame, getInstalledGames, groupForPicker } from "../steam/library";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { findSteam } from "../steam/paths";
 import { getAppStates } from "../steam/status";
-import { badgeFor, wrapTitle } from "./common";
+import { badgeFor, paintKey } from "./common";
 
 /**
  * Settings for {@link LaunchGame}.
@@ -206,12 +206,7 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
           return;
         }
 
-        const image = await renderKeyImage(
-          appId,
-          settings.artStyle ?? DEFAULT_STYLE,
-          settings.artFit ?? DEFAULT_FIT,
-          badge,
-        );
+        const image = await renderKeyImage(appId, settings.artStyle ?? DEFAULT_STYLE, settings.artFit ?? DEFAULT_FIT, badge);
 
         if (image !== undefined) {
           await target.setImage(image);
@@ -268,13 +263,11 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
     const appId = resolveAppId(settings);
     if (appId === undefined) {
       this.#drawn.delete(target.id);
-      await target.setImage(); // restores the action's default image from the manifest
-      await target.setTitle("Choose\ngame");
-
-      // Mark this title as ours, same as the branch below, so it gets cleared once an app id is
-      // set and showTitle is off. Otherwise the placeholder is stuck on the key forever.
-      if (settings.titleIsOurs !== true) {
-        await target.setSettings({ ...settings, titleIsOurs: true });
+      // The action's own icon from the manifest, with the prompt drawn on it. The title is left alone,
+      // it may be the user's own.
+      await paintKey(target, undefined, "Choose game", "launch", { clearTitle: settings.titleIsOurs === true });
+      if (settings.titleIsOurs === true) {
+        await target.setSettings({ ...settings, titleIsOurs: false });
       }
       return;
     }
@@ -289,24 +282,15 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
     }
 
     const badge = badgeFor(settings.showStatus !== false, (await getAppStates()).get(appId));
-    const image = await renderKeyImage(
-      appId,
-      settings.artStyle ?? DEFAULT_STYLE,
-      settings.artFit ?? DEFAULT_FIT,
-      badge,
-    );
+    const image = await renderKeyImage(appId, settings.artStyle ?? DEFAULT_STYLE, settings.artFit ?? DEFAULT_FIT, badge);
 
-    await target.setImage(image);
+    // The name is drawn into the image. A title is only ever cleared when it is one an earlier
+    // version wrote, never one the user typed.
+    await paintKey(target, image, settings.showTitle === true ? (name ?? `App ${appId}`) : "", "launch", {
+      clearTitle: settings.titleIsOurs === true,
+    });
+    updated.titleIsOurs = false;
     this.#drawn.set(target.id, badge);
-
-    if (settings.showTitle) {
-      await target.setTitle(wrapTitle(name ?? `App ${appId}`));
-      updated.titleIsOurs = true;
-    } else if (settings.titleIsOurs) {
-      // Only ever clear a title we put there ourselves, never one the user typed.
-      await target.setTitle("");
-      updated.titleIsOurs = false;
-    }
 
     // Written once, and only when something actually changed, so this can never loop.
     if (updated.gameName !== settings.gameName || updated.titleIsOurs !== settings.titleIsOurs) {

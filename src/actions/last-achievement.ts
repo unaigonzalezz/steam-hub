@@ -14,7 +14,7 @@ import { renderAchievementKey } from "../steam/artwork";
 import { openSteamUrl } from "../steam/launch";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { getRunningGame } from "../steam/running";
-import { wrapTitle } from "./common";
+import { paintKey } from "./common";
 
 /**
  * Settings for {@link LastAchievement}.
@@ -151,8 +151,7 @@ export class LastAchievement extends SingletonAction<LastAchievementSettings> {
    */
   async #paint(target: KeyAction<LastAchievementSettings>, settings: LastAchievementSettings): Promise<void> {
     const current = this.#current;
-    const signature =
-      current === undefined ? "idle" : `${current.achievement.icon}:${settings.showTitle === true}`;
+    const signature = current === undefined ? "idle" : `${current.achievement.icon}:${settings.showTitle === true}`;
 
     if (this.#drawn.get(target.id) === signature) {
       return;
@@ -167,8 +166,7 @@ export class LastAchievement extends SingletonAction<LastAchievementSettings> {
     }
 
     const image = await renderAchievementKey(current.appId, current.achievement.icon);
-    await target.setImage(image);
-    await target.setTitle(settings.showTitle === true ? wrapTitle(current.achievement.name) : "");
+    await paintKey(target, image, settings.showTitle === true ? current.achievement.name : "", "lastachievement");
   }
 }
 

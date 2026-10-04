@@ -13,7 +13,7 @@ import { type ArtFit, type ArtStyle, clearRenderCache, renderKeyImage } from "..
 import { openSteamUrl } from "../steam/launch";
 import { getInstalledGames, groupForPicker } from "../steam/library";
 import { findSteam } from "../steam/paths";
-import { type GamePagePage, steamPageUrl } from "./common";
+import { type GamePagePage, paintKey, steamPageUrl } from "./common";
 
 /** Short label drawn on the key, so identically-skinned keys for the same game stay tellable apart. */
 const PAGE_LABELS: Record<GamePagePage, string> = {
@@ -190,14 +190,11 @@ export class GamePage extends SingletonAction<GamePageSettings> {
 
     const appId = resolveAppId(settings);
     if (appId === undefined) {
-      await target.setImage(); // restores the action's default image from the manifest
-      await target.setTitle("Choose\ngame");
+      await paintKey(target, undefined, "Choose game", "gamepage"); // the action's own icon from the manifest
       return;
     }
 
     const image = await renderKeyImage(appId, settings.artStyle ?? DEFAULT_STYLE, settings.artFit ?? DEFAULT_FIT);
-
-    await target.setImage(image);
-    await target.setTitle(PAGE_LABELS[settings.page ?? DEFAULT_PAGE]);
+    await paintKey(target, image, PAGE_LABELS[settings.page ?? DEFAULT_PAGE], "gamepage");
   }
 }

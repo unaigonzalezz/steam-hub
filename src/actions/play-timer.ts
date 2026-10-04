@@ -14,7 +14,6 @@ import { openSteamUrl } from "../steam/launch";
 import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
 import { getCurrentSession, getRunningGame } from "../steam/running";
 import { formatElapsed } from "./common";
-import { getTextStyle } from "./text-style";
 
 /**
  * Settings for {@link PlayTimer}.
@@ -78,16 +77,8 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
   /** The session in progress, if any. Lives only in memory, a restart starts the clock over. */
   #session: Session | undefined;
 
-  /** Keys drawing their clock into the image, with what to draw it onto; absent for title keys. */
+  /** What each key draws its clock onto; absent only when even the stock image is missing. */
   readonly #faces = new Map<string, ClockFace>();
-
-  /**
-   * Initialises the action, repainting its keys when the shared text style changes.
-   */
-  constructor() {
-    super();
-    streamDeck.settings.onDidReceiveGlobalSettings(() => void this.#redrawAll());
-  }
 
   /**
    * Draws the key when it comes into view, and starts following the running game's session.
@@ -174,7 +165,7 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
 
   /**
    * Advances the clock on every visible key between polls, from the session the last poll found.
-   * Only the clock changes, drawn onto the art already rendered or written as the title, so nothing
+   * Only the clock changes, drawn onto the art already rendered, so nothing
    * is read and no art is rendered again.
    */
   async #tickAll(): Promise<void> {
@@ -215,15 +206,14 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
 
   /**
    * Writes to a key: the clock always, since it changes every tick anyway, but the art only when the
-   * game, style or text style behind it actually changed, that is the expensive part.
+   * game or style behind it actually changed, that is the expensive part.
    * @param target Key to draw on.
    * @param settings The key's settings.
    */
   async #paint(target: KeyAction<PlayTimerSettings>, settings: PlayTimerSettings): Promise<void> {
     const session = this.#session;
     const style = settings.artStyle ?? DEFAULT_STYLE;
-    const drawn = (await getTextStyle()) === "drawn";
-    const signature = `${session?.appId ?? "idle"}:${style}:${settings.artFit ?? DEFAULT_FIT}:${drawn}`;
+    const signature = `${session?.appId ?? "idle"}:${style}:${settings.artFit ?? DEFAULT_FIT}`;
     const reading = session === undefined ? IDLE_TITLE : formatElapsed(Date.now() - session.since);
 
     if (this.#drawn.get(target.id) !== signature) {
@@ -235,21 +225,17 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
           ? undefined
           : await renderKeyImage(session.appId, style, settings.artFit ?? DEFAULT_FIT, "running");
 
-      if (!drawn) {
-        await target.setImage(art);
-      } else {
-        // Without game art, the stock display the title used to sit in, so the clock still reads as
-        // a screen; with it, along the bottom, leaving the art to show which game is being timed.
-        const base = art ?? (await renderImageFile(pluginPath("imgs", "actions", "playtimer", "key@2x.png")));
-        if (base !== undefined) {
-          this.#faces.set(target.id, { base, middle: art === undefined });
-        }
+      // Without game art, the stock display, so the clock still reads as a screen; with it, along the
+      // bottom, leaving the art to show which game is being timed.
+      const base = art ?? (await renderImageFile(pluginPath("imgs", "actions", "playtimer", "key@2x.png")));
+      if (base !== undefined) {
+        this.#faces.set(target.id, { base, middle: art === undefined });
       }
     }
 
     const face = this.#faces.get(target.id);
     if (face === undefined) {
-      await target.setTitle(reading);
+      await target.setTitle(reading); // the stock image itself is missing, so there is nothing to draw on
     } else {
       await target.setImage(clockImage(face, reading, session === undefined));
       await target.setTitle("");
