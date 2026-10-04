@@ -50,15 +50,21 @@ Turn on **Show status** and the key frames itself green while the game is runnin
 
 ### Show Installed Games
 
-Turns a whole profile into a gallery of your library. Give each key a **position**, `1`, `2`, `3`, and so on, in the property inspector, and the plugin fills it in with the matching game automatically, no picking a game for each key by hand.
+Turns a whole profile into a gallery of your library. Set a key's **Key** option to **Game, automatic** and it takes the next free slot from where it sits on the device, left to right, top to bottom, and the plugin fills it in with the matching game, no picking a game, or even a number, for each key by hand. **Game, fixed slot** lets you type the slot yourself for a key that should stay put; automatic keys fill the slots left free around it.
 
 Sort order (name, most recently played, or size), art style, and title all live in one shared settings panel: set them once on any key of the profile and every other key follows.
 
-Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use it on every key of this page** to copy it across, then repeat on another page or profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. By default only installed games appear; turn on **Not installed** and the rest of the collection follows them, in black and white, most recently played first, and pressing one opens Steam's install dialog. Dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
+Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use on every key of this page** to copy it across, then repeat on another profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. By default only installed games appear; turn on **Not installed** and the rest of the collection follows them, in black and white, most recently played first, and pressing one opens Steam's install dialog. Dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
 
-A key left with no position doubles as the way in: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile.
+Set to **Open Steam Hub profile**, the key is the way in instead: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile. A newly dragged key starts like this, and so do keys set up before the Key option existed with no number, so existing entry keys keep working.
 
 > The original Stream Deck, the MK2, the Stream Deck XL, the Stream Deck +, and the Stream Deck + XL ship with a ready-made profile today. See [Requirements](#requirements) and [Contributing](#contributing) if you own another Elgato device.
+
+### Library Page
+
+Pages through your library with a single page of keys, however long it is. Put a **Next** and a **Previous** key next to your **Show Installed Games** keys: each press shifts every one of them on that device by a whole page, so slot 1 on page 3 of a 13-key page shows game 27. The page size is simply the highest slot on the device, nothing to configure. **Next** wraps round from the last page to the first; **Previous** on the first page takes you back to the profile you came from, the same way out as the Back shortcut, and shows a back arrow to say so (turn that off and it wraps to the last page instead).
+
+The key shows where you are, e.g. `3 / 20`. Hold either key to jump straight back to the first page. Changing a collection or the sort order goes back to the first page, and every start of Stream Deck opens on it too.
 
 ### Library Dial
 
@@ -123,12 +129,30 @@ Opens one specific game's store page, Community Hub, or uninstall dialog, using 
 1. **Install the plugin**, see [Download](#download) below.
 2. **Drag an action** onto any key:
    - **Launch Game**, pick a game from the dropdown.
-   - **Show Installed Games**, set a position number to fill that key automatically.
+   - **Show Installed Games**, set **Key** to **Game, automatic** to fill that key automatically.
    - **Random Game**, launches something different on every press.
    - **Steam Shortcut** or **Steam Status**, pick a destination or state.
 3. **Press the key.**
 
-To fill a whole profile with your library, drag **Show Installed Games** onto every key you want to use and number them `1`, `2`, `3`, and so on. The rest of the profile fills itself in.
+To fill a whole profile with your library, drag **Show Installed Games** onto every key you want to use, set one of them to **Game, automatic**, and press **Use on every key of this page**. The rest of the profile fills itself in.
+
+### How a games profile works
+
+A games profile is **one page** of keys, however big your library is:
+
+- **Game keys** (**Show Installed Games**, `N` of them) show the first `N` games of the list. Automatic keys number themselves in grid order; fixed keys keep the slot typed into them.
+- A **Library Page** key set to **Next** moves every game key on the device forward by `N`, and wraps from the last page back to the first. One set to **Previous** moves back, and on the first page it becomes the way out, a back arrow that returns to the profile you came from.
+- **A key set to Open Steam Hub profile** is the way in. Put it on your main profile; pressing it opens the bundled Steam Hub profile.
+
+The page is kept per device, starts on page 1 every time Stream Deck starts, and goes back to page 1 when the list changes underneath it (another collection, sort order, or download/not-installed setting).
+
+**One profile per collection.** Every game key can be pointed at a Steam collection. To have a profile for favourites and another for co-op games:
+
+1. Duplicate the Steam Hub profile in the Stream Deck app (or build one with automatic game keys and two Library Page keys).
+2. On any game key, pick the **Collection** and press **Use on every key of this page**.
+3. To get there, use Stream Deck's own **Switch Profile** action, pointing at the new profile. A key set to Open Steam Hub profile only ever opens the bundled one, since a plugin can only switch to profiles it ships itself.
+
+The **Previous** key's way out works from any of these profiles: it always returns to wherever you came from.
 
 ---
 

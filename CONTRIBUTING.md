@@ -1,8 +1,8 @@
 # Contributing to Steam Hub
 
 This guide covers the thing that needs the most help right now, adding the "Show
-installed games" profile for Elgato devices that don't have one yet. Only the original
-Stream Deck/MK2 and the Stream Deck + XL are covered today.
+installed games" profile for Elgato devices that don't have one yet. See the table in
+section 4 for which devices are covered today.
 
 ## 1. Why a device needs its own profile
 
@@ -27,16 +27,30 @@ build the profile through the app itself, the same way the MK2 one was made.
 
 ## 3. How "Show installed games" works
 
-Look at [`src/actions/show-installed.ts`](src/actions/show-installed.ts). Each key only
-stores one setting, `index`, the 1-based position it shows from the sorted library.
+Look at [`src/actions/show-installed.ts`](src/actions/show-installed.ts). Each key stores
+`mode`, what it does, plus `index` for a fixed slot and optionally `collection`, the Steam
+collection it numbers into (empty for the whole library):
+
+| `mode` | Inspector label | What the key does |
+|---|---|---|
+| `auto` | Game, automatic | Takes the next free slot in grid order, left to right, top to bottom, from the key's `coordinates`. |
+| `fixed` | Game, fixed slot | Takes the slot in `index`. Automatic keys skip it. |
+| `entry` | Open Steam Hub profile | Shows no game; jumps to the `"Steam Hub"` profile when pressed. |
+| absent | (shown as one of the above) | Keys from before `mode` existed: `fixed` with an `index`, `entry` without. A freshly dragged key is `entry` too. |
 
 - No artwork needed per device. Each game's cover is drawn on the fly.
-- Key order doesn't have to match the index order. Number them however makes sense for
-  that device's layout.
-- A key with no `index` set jumps to the `"Steam Hub"` profile when pressed. Leave one
-  of these on the user's main profile as the entry point into the list.
-- If a device has fewer keys than a user's library has games, use Stream Deck's own
-  `Create Folder` / `Page` actions to add more pages, like the MK2 profile does.
+- Use `auto` for every game key in a bundled profile, so nothing needs numbering and the
+  layout adapts to the grid. Reserve `fixed` for users who want their own order.
+- Leave an `entry` key on the user's main profile as the entry point into the list.
+- **A profile is a single page.** Don't use Stream Deck's own `Page` actions to fit a big
+  library. The **Library page** action
+  ([`src/actions/page-turn.ts`](src/actions/page-turn.ts)) shifts every game key on the
+  device by a whole page, with no limit on the number of pages. The page size is the
+  highest slot on the device, so it adapts to any grid without configuration. The page
+  itself lives in [`src/actions/paging.ts`](src/actions/paging.ts), per device and in
+  memory only.
+- **Previous** on the first page returns to the profile the user came from (it shows a
+  back arrow there), so it doubles as the profile's "Back" key.
 
 ## 4. Devices and their status
 
@@ -95,17 +109,18 @@ in [`.vscode/launch.json`](.vscode/launch.json).
 1. Connect the target device.
 2. Create a new profile for it. The name you give it in the app doesn't matter, what
    matters is the `Name` you'll set in `manifest.json` in step 9.
-3. Use the same layout as the MK2 profile, so every device feels consistent:
-   - First key, a **Steam shortcut** action set to "Back", so it returns to the
-     profile the user came from.
+3. Use the same layout on every device, so they all feel consistent:
+   - First key, a **Library page** action set to **Previous page**. On the first page it
+     returns to the profile the user came from, so it also serves as "Back".
    - Second key, a **Create Folder** action (Stream Deck's own), holding whatever
      shortcuts you want handy, Steam status, Now playing, Random game, and other Steam
      shortcut destinations like Library or Big Picture.
-   - Every remaining key, a **Show installed games** action, numbered `1`, `2`, `3`,
-     and so on, in whatever order makes sense for the grid.
-4. If the library could exceed the number of remaining keys, add pages to keep
-   numbering on the next one, and reserve a key on each page for "next page" (and
-   "previous page" if there's room), like the MK2 profile does.
+   - Last key, a **Library page** action set to **Next page**.
+   - Every remaining key, a **Show installed games** action. Set one to **Game,
+     automatic** and press **Use on every key of this page**; the rest follow and number
+     themselves in grid order. Leave their collection empty, so the bundled profile shows
+     the whole library.
+4. Keep it to a single page. The Library page keys reach the rest of the library.
 5. Save the profile.
 
 ## 8. Export the profile and add it to the plugin
@@ -178,7 +193,10 @@ Then, with the plugin linked (step 6):
 
 - Install the new profile on your device and confirm the keys fill in with your real
   library.
-- Test the key with no `index`, or the "gamesprofile" shortcut, and confirm it opens the
+- Press **Next** until it wraps back to `1 / N`, and confirm **Previous** on the first
+  page shows a back arrow and returns to the profile you came from. Holding either key
+  should jump back to `1 / N`.
+- Test a key set to **Open Steam Hub profile**, or the "gamesprofile" shortcut, and confirm it opens the
   right profile on that device.
 - If you have another Elgato device too, confirm `DeviceType: 0` still works as before.
 

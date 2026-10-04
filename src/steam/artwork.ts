@@ -2,10 +2,12 @@ import streamDeck from "@elgato/streamdeck";
 import jpegCodec from "@jimp/js-jpeg";
 import pngCodec from "@jimp/js-png";
 import { Jimp } from "jimp";
+import { readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import opentype from "opentype.js";
 
 import { findSteam } from "./paths";
 
@@ -65,21 +67,12 @@ const SOURCES = {
  * Names the CDN actually serves. The local cache holds a few that the public CDN does not, and
  * asking for those only buys a round trip and a 404.
  */
-const CDN_NAMES = new Set([
-  "library_600x900_2x.jpg",
-  "library_600x900.jpg",
-  "header.jpg",
-  "library_hero.jpg",
-  "logo.png",
-]);
+const CDN_NAMES = new Set(["library_600x900_2x.jpg", "library_600x900.jpg", "header.jpg", "library_hero.jpg", "logo.png"]);
 
 type ArtKind = keyof typeof SOURCES;
 
 /** Steam's public art CDN. The second host is a fallback for networks that block the first. */
-const CDN_HOSTS = [
-  "https://cdn.cloudflare.steamstatic.com/steam/apps",
-  "https://cdn.akamai.steamstatic.com/steam/apps",
-];
+const CDN_HOSTS = ["https://cdn.cloudflare.steamstatic.com/steam/apps", "https://cdn.akamai.steamstatic.com/steam/apps"];
 
 /** Same CDN, different tree: achievement icons live under the community image path, not `steam/apps`. */
 const ACHIEVEMENT_CDN_HOSTS = [
@@ -140,8 +133,12 @@ function blank(color: number, size: Size = KEY): Image {
 const rendered = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | undefined>>();
 
-/** Keeps the render cache bounded; a full 32-key profile never comes close to this. */
-const MAX_CACHED_RENDERS = 96;
+/**
+ * Keeps the render cache bounded. Room for three pages of the largest device, 36 keys on a Stream
+ * Deck + XL: the one on screen and the two either side that are rendered ahead of a page turn, with
+ * headroom for dials and the odd status variant.
+ */
+const MAX_CACHED_RENDERS = 160;
 
 let tempCounter = 0;
 
@@ -360,6 +357,201 @@ export async function renderImageFile(file: string): Promise<string | undefined>
   fileImages.set(key, image);
 
   return image;
+}
+
+/**
+ * Text drawn onto a key: a short reading, a name, or both.
+ *
+ * The reading is a page position, a play time or a download percentage. `main` is the part that
+ * changes and is drawn large; `suffix`, if any, follows it smaller and dimmer, the "/20" of "3/20"
+ * or the "%" of "42%". The label is a game name, already wrapped into lines, drawn small.
+ */
+export type Caption = {
+  main?: string;
+  suffix?: string;
+
+  /** Font size of `main`, in key pixels. Defaults to 30; a long reading like "1:23:45" wants less. */
+  size?: number;
+
+  /** Lines of a name, drawn small along the bottom edge. */
+  label?: readonly string[];
+
+  /**
+   * Whether the key wears a status frame, the green or amber border. The text then keeps further
+   * in from the edges, so it does not sit hard against the frame.
+   */
+  framed?: boolean;
+
+  /** Whether the reading goes across the middle of the key instead of along an edge. Ignored with a label. */
+  middle?: boolean;
+
+  /** Whether the reading is drawn in the dimmer colour, for a placeholder such as an idle clock. */
+  muted?: boolean;
+};
+
+/** Gap between the text and the key's edge band, in key pixels; wider inside a status frame. */
+const CAPTION_MARGIN = { plain: 3, framed: 9 } as const;
+
+/** Font size of a {@link Caption} label, in key pixels. */
+const LABEL_SIZE = 15;
+
+/** Roughly how many characters of a {@link Caption} label fit across one key. */
+export const LABEL_LINE_LENGTH = 14;
+
+/**
+ * Draws a {@link Caption} onto a key image: the label along the bottom edge, and the reading along
+ * the bottom too, or along the top when there is a label to make room for.
+ *
+ * Done as an SVG wrapped around the existing image rather than through Jimp, which would need a
+ * bitmap font shipped and decoded just to print a few words; the Stream Deck renders SVG keys
+ * natively. The colours are those of the stock page arrows, the light end of their chevron and the
+ * ring's stroke, so everything the plugin writes looks alike on every key.
+ * @param base A `data:` URI of the key image underneath.
+ * @param caption What to write.
+ * @returns A `data:` URI of the composed SVG.
+ */
+export function renderCaption(base: string, caption: Caption): string {
+  const font = captionFont("bold");
+  const size = caption.size ?? 30;
+  const label = caption.label ?? [];
+
+  // Baselines are placed by hand, since Qt's SVG renderer ignores dominant-baseline: clear of the
+  // status frame BORDER_WIDTH draws along either edge, by the font's cap height at the top.
+  const capHeight = font === undefined ? 0.72 : (font.tables.os2?.sCapHeight ?? 700) / font.unitsPerEm;
+  const margin = caption.framed === true ? CAPTION_MARGIN.framed : CAPTION_MARGIN.plain;
+  const bottom = KEY_SIZE - BORDER_WIDTH - margin;
+  const top = BORDER_WIDTH + margin + Math.round(size * capHeight);
+  const middle = KEY_SIZE / 2 + Math.round((size * capHeight) / 2);
+  const readingBaseline = label.length > 0 ? top : caption.middle === true ? middle : bottom;
+
+  // Qt's SVG renderer has no filters either, so the shadow that lifts the text off whatever art is
+  // underneath is a second, offset copy of it.
+  const layer = (dx: number, bright: string, dim: string): string => {
+    const opacity = dx === 0 ? undefined : 0.75;
+    let out = "";
+
+    if (caption.main) {
+      // The changing value bold, what qualifies it, the "/20" or the "%", in the regular weight.
+      const runs: TextRun[] = [{ text: caption.main, size, fill: caption.muted === true ? dim : bright, weight: "bold" }];
+      if (caption.suffix) {
+        runs.push({ text: caption.suffix, size: Math.round(size * 0.67), fill: dim, weight: "regular" });
+      }
+      out += drawLine(runs, readingBaseline + dx, dx, opacity);
+    }
+
+    label.forEach((line, i) => {
+      const y = bottom - (label.length - 1 - i) * (LABEL_SIZE + 2);
+      out += drawLine([{ text: line, size: LABEL_SIZE, fill: bright, weight: "regular" }], y + dx, dx, opacity);
+    });
+
+    return out;
+  };
+
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${KEY_SIZE}" height="${KEY_SIZE}" viewBox="0 0 ${KEY_SIZE} ${KEY_SIZE}">` +
+    `<image x="0" y="0" width="${KEY_SIZE}" height="${KEY_SIZE}" xlink:href="${base}"/>` +
+    layer(1.5, "#001a3a", "#001a3a") +
+    layer(0, "#d2e2f6", "#8fb0de") +
+    `</svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
+/**
+ * The fonts captions are drawn in, one file per weight, shipped in the plugin's `fonts` folder so
+ * keys look the same on every machine whether or not they are installed. Replace the files, or point
+ * these at others, to change them; static TrueType fonts are the safest, opentype.js does not apply a
+ * variable font's weight axis. A missing regular weight falls back to the bold one.
+ */
+const CAPTION_FONT_FILES = { bold: "Gila Bold.ttf", regular: "Gila.ttf" } as const;
+
+/** A caption font weight, one of {@link CAPTION_FONT_FILES}. */
+type FontWeight = keyof typeof CAPTION_FONT_FILES;
+
+/** Fallback when the font file is missing or unreadable: drawn as text with a system font. */
+const FALLBACK_FONT_FAMILY = "Arial";
+
+/** Widest a line of caption text may be before it is shrunk to fit, in key pixels. */
+const CAPTION_MAX_WIDTH = KEY_SIZE - 2 * (BORDER_WIDTH + CAPTION_MARGIN.plain);
+
+/** The parsed caption fonts, by weight: absent before the first read, `null` once one failed to load. */
+const captionFontCache = new Map<FontWeight, opentype.Font | null>();
+
+/**
+ * Loads a caption font, once per weight.
+ * @param weight Which weight.
+ * @returns The font, the bold one in place of a missing regular, or `undefined` when neither can be
+ * read, so captions fall back to a system font.
+ */
+function captionFont(weight: FontWeight): opentype.Font | undefined {
+  if (!captionFontCache.has(weight)) {
+    const file = pluginPath("fonts", CAPTION_FONT_FILES[weight]);
+    try {
+      const bytes = readFileSync(file);
+      captionFontCache.set(
+        weight,
+        opentype.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+      );
+    } catch (err) {
+      streamDeck.logger.warn(`Cannot load the caption font "${file}"`, err);
+      captionFontCache.set(weight, null);
+    }
+  }
+
+  return captionFontCache.get(weight) ?? (weight === "bold" ? undefined : captionFont("bold"));
+}
+
+/** A stretch of caption text in one size, colour and weight. */
+type TextRun = { text: string; size: number; fill: string; weight: FontWeight };
+
+/**
+ * Draws one line of text, centred across the key, as outlines in the caption fonts, so it renders
+ * the same whatever is installed. Shrunk as a whole when it would not fit across the key. Falls back
+ * to SVG text in a system font when the fonts cannot be loaded.
+ * @param runs The line's pieces, drawn one after another.
+ * @param baseline Baseline, in key pixels.
+ * @param dx Horizontal offset, for the shadow copy.
+ * @param opacity Fill opacity, or `undefined` for opaque.
+ * @returns SVG markup.
+ */
+function drawLine(runs: readonly TextRun[], baseline: number, dx: number, opacity: number | undefined): string {
+  const fillOpacity = opacity === undefined ? "" : ` fill-opacity="${opacity}"`;
+
+  const fonts = runs.map((run) => captionFont(run.weight));
+  if (fonts.some((font) => font === undefined)) {
+    return (
+      `<text x="${KEY_SIZE / 2 + dx}" y="${baseline}" text-anchor="middle" font-family="${FALLBACK_FONT_FAMILY}"${fillOpacity}>` +
+      runs
+        .map(
+          (run) =>
+            `<tspan font-size="${run.size}" font-weight="${run.weight === "bold" ? "bold" : "normal"}" fill="${run.fill}">${escapeXml(run.text)}</tspan>`,
+        )
+        .join("") +
+      `</text>`
+    );
+  }
+
+  const widths = runs.map((run, i) => fonts[i]!.getAdvanceWidth(run.text, run.size));
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  const scale = total > CAPTION_MAX_WIDTH ? CAPTION_MAX_WIDTH / total : 1;
+
+  let x = KEY_SIZE / 2 + dx - (total * scale) / 2;
+  return runs
+    .map((run, i) => {
+      const d = fonts[i]!.getPath(run.text, x, baseline, run.size * scale).toPathData(2);
+      x += widths[i]! * scale;
+      return `<path d="${d}" fill="${run.fill}"${fillOpacity}/>`;
+    })
+    .join("");
+}
+
+/**
+ * Escapes text for an SVG text node.
+ * @param value Raw text.
+ * @returns The escaped text.
+ */
+function escapeXml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
@@ -874,7 +1066,9 @@ async function download(
   for (const host of hosts) {
     const url = `${host}/${appId}/${name}`;
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
+      });
       if (!response.ok) {
         break; // a 404 here means the asset does not exist; the other host will not have it either
       }

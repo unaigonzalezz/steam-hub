@@ -5,6 +5,7 @@ import { LastAchievement } from "./actions/last-achievement";
 import { LaunchGame } from "./actions/launch-game";
 import { LibraryDial } from "./actions/library-dial";
 import { NowPlaying } from "./actions/now-playing";
+import { PageTurn } from "./actions/page-turn";
 import { PlayTimer } from "./actions/play-timer";
 import { RandomGame } from "./actions/random-game";
 import { ShowInstalled } from "./actions/show-installed";
@@ -25,5 +26,6 @@ streamDeck.actions.registerAction(new PlayTimer());
 streamDeck.actions.registerAction(new LastAchievement());
 streamDeck.actions.registerAction(new GamePage());
 streamDeck.actions.registerAction(new LibraryDial());
+streamDeck.actions.registerAction(new PageTurn());
 
 streamDeck.connect();

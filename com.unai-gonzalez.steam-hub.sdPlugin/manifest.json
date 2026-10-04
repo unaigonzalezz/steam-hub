@@ -54,6 +54,23 @@
       ]
     },
     {
+      "Name": "Library page",
+      "UUID": "com.unai-gonzalez.steam-hub.page",
+      "Icon": "imgs/actions/page/icon",
+      "Tooltip": "Turns every Show installed games key on the device to the next or previous page of your library.",
+      "PropertyInspectorPath": "ui/page-turn.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/page/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
       "Name": "Steam shortcut",
       "UUID": "com.unai-gonzalez.steam-hub.shortcut",
       "Icon": "imgs/actions/shortcut/icon",

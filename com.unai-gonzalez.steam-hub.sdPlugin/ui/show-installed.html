@@ -11,29 +11,41 @@
     <details class="group" id="group-key" open>
       <summary>This key</summary>
       <div class="group-body">
-        <sdpi-item label="Position">
-          <sdpi-textfield setting="index" placeholder="1" pattern="[0-9]*" maxlength="4"></sdpi-textfield>
+        <sdpi-item label="Key">
+          <sdpi-select setting="mode" id="mode">
+            <option value="auto">Game, automatic</option>
+            <option value="fixed">Game, fixed slot</option>
+            <option value="entry">Open Steam Hub profile</option>
+          </sdpi-select>
         </sdpi-item>
+
+        <div id="slot-row" hidden>
+          <sdpi-item label="Slot">
+            <sdpi-textfield setting="index" placeholder="1" pattern="[0-9]*" maxlength="4"></sdpi-textfield>
+          </sdpi-item>
+        </div>
 
         <p class="hint" id="position-hint"></p>
 
-        <sdpi-item label="Collection">
-          <sdpi-select
-            setting="collection"
-            datasource="getCollections"
-            show-refresh
-            default=""
-            loading="Reading your collections…"
-          ></sdpi-select>
-        </sdpi-item>
+        <div id="game-only">
+          <sdpi-item label="Collection">
+            <sdpi-select
+              setting="collection"
+              datasource="getCollections"
+              show-refresh
+              default=""
+              loading="Reading your collections…"
+            ></sdpi-select>
+          </sdpi-item>
 
-        <sdpi-item>
-          <sdpi-button id="apply-collection">Use on every key of this page</sdpi-button>
-        </sdpi-item>
+          <sdpi-item>
+            <sdpi-button id="apply-collection">Use on every key of this page</sdpi-button>
+          </sdpi-item>
 
-        <p class="hint" id="apply-status" hidden></p>
+          <p class="hint" id="apply-status" hidden></p>
 
-        <p class="hint">Give each page its own collection. Dynamic collections aren't listed.</p>
+          <p class="hint">Copies this key's collection to the whole page, and makes new keys automatic too.</p>
+        </div>
       </div>
     </details>
 
@@ -70,6 +82,14 @@
         <sdpi-item label="Play time">
           <sdpi-checkbox setting="showPlayTime" global label="Count up while the game runs"></sdpi-checkbox>
         </sdpi-item>
+
+        <sdpi-item label="Text" title="Drawn on the key uses the plugin&#39;s own style. Switch to Stream Deck title to pick the font, size, colour and position yourself in the Stream Deck title menu.">
+          <sdpi-select setting="textStyle" global default="drawn">
+            <option value="drawn">Drawn on the key (default)</option>
+            <option value="title">Stream Deck title (customisable)</option>
+          </sdpi-select>
+        </sdpi-item>
+        <p class="hint">Name, play time and download %. Want your own font, size or colour? Choose Stream Deck title, then style it from the title menu (the T icon).</p>
       </div>
     </details>
 
@@ -201,16 +221,59 @@
             : "No custom image is set, there is nothing to reset yet.";
         }
 
+        const modeSelect = document.getElementById("mode");
+        const slotRow = document.getElementById("slot-row");
+        const gameOnly = document.getElementById("game-only");
+        let current = {};
+        let infoTimer;
+
         /**
-         * One hint for the position field, worded for what it currently holds, instead of two
-         * paragraphs covering both cases at once.
+         * What a key does, reading keys set up before the "Key" setting existed the way the plugin
+         * does: a number makes it a fixed slot, no number makes it the way into the profile.
+         */
+        function effectiveMode(settings) {
+          if (["auto", "fixed", "entry"].includes(settings.mode)) {
+            return settings.mode;
+          }
+
+          return /^[1-9]\d*$/.test(String(settings.index ?? "").trim()) ? "fixed" : "entry";
+        }
+
+        /**
+         * Shows the fields that apply to what the key does, and asks the plugin which slot it got.
+         * The slot field is only for fixed keys; an entry key has no list, so no collection either.
          */
         function syncKey(settings) {
-          const index = String((settings ?? {}).index ?? "").trim();
+          current = settings ?? {};
+          const mode = effectiveMode(current);
 
-          positionHint.textContent = /^[1-9]\d*$/.test(index)
-            ? `Shows game #${index} of the list. Past the end, the key stays blank.`
-            : "Number your keys 1, 2, 3… Left empty, this key opens the Steam profile instead.";
+          slotRow.hidden = mode !== "fixed";
+          gameOnly.hidden = mode === "entry";
+
+          // Older keys have no stored mode: show what they already do rather than a blank picker.
+          if (modeSelect.value !== mode) {
+            modeSelect.value = mode;
+          }
+
+          // A moment's delay, so the plugin has the change before it is asked about it.
+          clearTimeout(infoTimer);
+          infoTimer = setTimeout(() => client.send("sendToPlugin", { event: "getSlotInfo" }), 150);
+        }
+
+        /** One hint for the key, worded for what it does and where it ended up. */
+        function showSlotInfo(info) {
+          const { role, slot, size } = info ?? {};
+
+          positionHint.textContent =
+            role === "entry"
+              ? "Opens the Steam Hub profile when pressed. Put it on your main profile."
+              : role === "unset"
+                ? "Type the slot this key takes on every page."
+                : slot === undefined
+                  ? ""
+                  : role === "auto"
+                    ? `Slot ${slot} of ${size} on every page, from where the key sits: left to right, top to bottom.`
+                    : `Slot ${slot} of ${size} on every page. Automatic keys fill the slots left free.`;
         }
 
         reset.addEventListener("click", async () => {
@@ -225,26 +288,36 @@
 
         // Settings the inspector writes itself don't come back as an event, so the field is
         // watched directly as well.
-        syncKey({});
         client.didReceiveSettings.subscribe((ev) => syncKey(ev.payload?.settings));
-        client.getSettings().then((payload) => syncKey(payload?.settings));
-        document.querySelector('sdpi-textfield[setting="index"]').addEventListener("input", (ev) => {
-          syncKey({ index: ev.target.value });
+        customElements.whenDefined("sdpi-select").then(async () => {
+          syncKey((await client.getSettings())?.settings);
         });
 
-        // Read back from the stored settings rather than the select, so what gets copied is what
-        // this key actually uses, even before the picker has finished loading its list.
+        modeSelect.addEventListener("valuechange", () => {
+          // An empty value is the picker loading a key with no stored mode yet; syncKey fills it in.
+          syncKey(modeSelect.value ? { ...current, mode: modeSelect.value } : current);
+        });
+        document.querySelector('sdpi-textfield[setting="index"]').addEventListener("input", (ev) => {
+          syncKey({ ...current, index: ev.target.value });
+        });
+
         const applyStatus = document.getElementById("apply-status");
         let applyTimer;
 
-        document.getElementById("apply-collection").addEventListener("click", async () => {
-          const { settings } = (await client.getSettings()) ?? {};
-          client.send("sendToPlugin", { event: "applyCollection", collection: settings?.collection ?? "" });
+        document.getElementById("apply-collection").addEventListener("click", () => {
+          // The plugin reads this key's stored settings itself, so what gets copied is what the key
+          // actually uses, even before the picker has finished loading its list.
+          client.send("sendToPlugin", { event: "applyCollection" });
         });
 
         // The plugin answers with what the button actually did, shown for a few seconds so a click
-        // never goes by without a visible result.
+        // never goes by without a visible result; and with the slot this key ended up in.
         client.sendToPropertyInspector.subscribe((ev) => {
+          if (ev.payload?.event === "slotInfo") {
+            showSlotInfo(ev.payload);
+            return;
+          }
+
           if (ev.payload?.event !== "applyResult") {
             return;
           }

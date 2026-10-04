@@ -70,16 +70,17 @@ const TITLE_LINE_LENGTH = 10;
  * @param name Name to wrap.
  * @param maxLines Most lines to use before truncating with an ellipsis. Lower this when the title
  * has to share the key with something else, such as an elapsed-time line underneath.
+ * @param lineLength Most characters per line; a name drawn into the image in a smaller font fits more.
  * @returns The wrapped name, capped at `maxLines` lines.
  */
-export function wrapTitle(name: string, maxLines = 3): string {
+export function wrapTitle(name: string, maxLines = 3, lineLength = TITLE_LINE_LENGTH): string {
   const lines: string[] = [];
   let line = "";
 
   for (const word of name.split(/\s+/)) {
     if (line === "") {
       line = word;
-    } else if (line.length + 1 + word.length <= TITLE_LINE_LENGTH) {
+    } else if (line.length + 1 + word.length <= lineLength) {
       line += ` ${word}`;
     } else {
       lines.push(line);
@@ -93,7 +94,7 @@ export function wrapTitle(name: string, maxLines = 3): string {
 
   if (lines.length > maxLines) {
     lines.length = maxLines;
-    lines[maxLines - 1] = `${lines[maxLines - 1]!.slice(0, TITLE_LINE_LENGTH - 1)}…`;
+    lines[maxLines - 1] = `${lines[maxLines - 1]!.slice(0, lineLength - 1)}…`;
   }
 
   return lines.join("\n");
