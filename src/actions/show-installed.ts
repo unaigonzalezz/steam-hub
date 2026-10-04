@@ -496,6 +496,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     // shows where the download stands instead, in Steam's downloads page.
     if (slot.installing || (await getAppStates()).get(slot.appId)?.updating === true) {
       try {
+        streamDeck.logger.info(`${slot.name} is still downloading; opening Steam's downloads page`);
         await openSteamUrl("steam://open/downloads");
         await target.showOk();
       } catch (err) {
@@ -518,6 +519,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     }
 
     try {
+      streamDeck.logger.info(`Launching ${slot.name} from key ${target.id}`);
       await launchGame(slot.appId);
       await target.showOk();
     } catch (err) {

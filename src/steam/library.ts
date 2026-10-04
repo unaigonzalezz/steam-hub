@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { getLiveDownload } from "./download-log";
 import { exists, findSteam, forgetSteam, type SteamInstall, withTimeout } from "./paths";
 import { getNumber, getObject, getString, parseVdf, type VdfObject } from "./vdf";
 
@@ -382,8 +383,9 @@ async function getManifestProgress(): Promise<Map<string, ManifestProgress>> {
   }
 
   if (progressScanning === undefined) {
-    const task = scanManifests()
-      .then((entries) => {
+    // The manifests only move when a download stops; the content log follows it while it runs.
+    const task = Promise.all([scanManifests(), getLiveDownload()])
+      .then(([entries, live]) => {
         const progress = new Map<string, ManifestProgress>();
         const incomplete = new Set<string>();
 
@@ -399,7 +401,12 @@ async function getManifestProgress(): Promise<Map<string, ManifestProgress>> {
 
           const toDownload = getNumber(entry.state, "BytesToDownload");
           const downloaded = getNumber(entry.state, "BytesDownloaded");
-          const fraction = toDownload > 0 ? Math.min(1, Math.max(0, downloaded / toDownload)) : undefined;
+          const fromManifest = toDownload > 0 ? Math.min(1, Math.max(0, downloaded / toDownload)) : undefined;
+
+          // The live estimate starts from the exact count logged when the download (re)started, and
+          // the manifest is exact again whenever it stops, so the larger of the two is the better one.
+          const fraction =
+            live?.appId === entry.appId ? Math.max(fromManifest ?? 0, live.fraction) : fromManifest;
 
           const lastPlayed = getNumber(entry.state, "LastPlayed");
 
