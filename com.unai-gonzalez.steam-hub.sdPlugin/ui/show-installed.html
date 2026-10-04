@@ -56,9 +56,9 @@
       <div class="group-body">
         <sdpi-item label="Image">
           <sdpi-select setting="artStyle" global default="logo">
+            <option value="logo">Logo on background</option>
             <option value="capsule">Vertical capsule</option>
             <option value="header">Banner</option>
-            <option value="logo">Logo on background</option>
             <option value="hero">Wide background</option>
             <option value="none">No image</option>
           </sdpi-select>
@@ -76,25 +76,38 @@
         </sdpi-item>
 
         <sdpi-item label="Status">
-          <sdpi-checkbox setting="showStatus" global default="true" label="Frame while running or updating"></sdpi-checkbox>
+          <sdpi-checkbox
+            setting="showStatus"
+            global
+            default="true"
+            label="Frame while running or updating"
+          ></sdpi-checkbox>
         </sdpi-item>
 
         <sdpi-item label="Play time">
           <sdpi-checkbox setting="showPlayTime" global label="Count up while the game runs"></sdpi-checkbox>
         </sdpi-item>
 
-        <sdpi-item label="Text" title="Drawn on the key uses the plugin&#39;s own style. Switch to Stream Deck title to pick the font, size, colour and position yourself in the Stream Deck title menu.">
+        <sdpi-item
+          label="Text"
+          title="Drawn on the key uses the plugin&#39;s own style. Switch to Stream Deck title to pick the font, size, colour and position yourself in the Stream Deck title menu."
+        >
           <sdpi-select setting="textStyle" global default="drawn">
             <option value="drawn">Drawn on the key (default)</option>
             <option value="title">Stream Deck title (customisable)</option>
           </sdpi-select>
         </sdpi-item>
-        <p class="hint">Name, play time and download %. Want your own font, size or colour? Choose Stream Deck title, then style it from the title menu (the T icon).</p>
+        <p class="hint">
+          Name, play time and download %. Want your own font, size or colour? Choose Stream Deck title, then style it
+          from the title menu (the T icon).
+        </p>
       </div>
     </details>
 
     <details class="group" id="group-list">
-      <summary>Library <span class="summary-note">order, downloads</span><span class="shared-tag">All keys</span></summary>
+      <summary>
+        Library <span class="summary-note">order, downloads</span><span class="shared-tag">All keys</span>
+      </summary>
       <div class="group-body">
         <sdpi-item label="Order by">
           <sdpi-select setting="sortOrder" global default="name">
@@ -105,7 +118,12 @@
         </sdpi-item>
 
         <sdpi-item label="Downloads">
-          <sdpi-checkbox setting="showInstalling" global default="true" label="Show new installs in progress"></sdpi-checkbox>
+          <sdpi-checkbox
+            setting="showInstalling"
+            global
+            default="true"
+            label="Show new installs in progress"
+          ></sdpi-checkbox>
         </sdpi-item>
 
         <p class="hint">They go first while downloading, moving the rest down by one.</p>
