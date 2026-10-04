@@ -113,7 +113,7 @@ async function waitForApp(appId: string, timeoutMs: number): Promise<boolean> {
  * Whether the Steam client is running, from the process id it keeps in the registry while open.
  * @returns `true` when it is, and also when that cannot be told, so a launch is never held back.
  */
-async function isSteamRunning(): Promise<boolean> {
+export async function isSteamRunning(): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync(
       "reg",

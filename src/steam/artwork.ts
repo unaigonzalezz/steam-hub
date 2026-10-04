@@ -554,6 +554,140 @@ function escapeXml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Rendered avatar keys, keyed by every file's path and modification time. */
+const avatarKeys = new Map<string, string>();
+
+/** The image files an avatar key is built from, each optional. */
+export type AvatarLayers = {
+  /** The avatar, a JPEG or PNG. */
+  avatar?: string;
+
+  /**
+   * A frame laid over the avatar: a key-sized PNG, opaque where the frame is and transparent where
+   * the avatar shows through. The avatar is fitted to the transparent hole, so the frame can be
+   * redrawn with a hole of any size or place.
+   */
+  frame?: string;
+
+  /**
+   * A status bubble, any PNG with transparency, laid over the frame. One drawn at key size covers
+   * the whole key, so it can sit anywhere; a smaller one goes in the bottom-right corner.
+   */
+  bubble?: string;
+
+  /**
+   * How the avatar itself is toned, so a state reads even before the frame's colour does: `dim`
+   * darkens it, `grey` turns it black and white, `faded` does both.
+   */
+  effect?: AvatarEffect;
+};
+
+/** A tone applied to the avatar; see {@link AvatarLayers.effect}. */
+export type AvatarEffect = "none" | "dim" | "grey" | "faded";
+
+/** How bright a dimmed avatar stays, as a fraction of the original. */
+const AVATAR_DIM = 0.6;
+
+/**
+ * Renders a user's avatar for a key: the avatar, toned if asked, the frame over it and an optional
+ * bubble on top. Any missing or unreadable layer is simply left out, so a missing avatar still
+ * shows the frame.
+ * @param layers The files to build it from.
+ * @returns A `data:` URI.
+ */
+export async function renderAvatarKey(layers: AvatarLayers): Promise<string> {
+  // Keyed on modification times too, so a new avatar, or a file edited in place, shows on the next draw.
+  const stamp = async (file: string | undefined): Promise<string> => {
+    try {
+      return file === undefined ? "-" : `${file}:${(await stat(file)).mtimeMs}`;
+    } catch {
+      return `${file}:missing`;
+    }
+  };
+  const effect = layers.effect ?? "none";
+  const key = `${(await Promise.all([layers.avatar, layers.frame, layers.bubble].map(stamp))).join("|")}|${effect}`;
+
+  const cached = avatarKeys.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const load = async (file: string | undefined): Promise<Image | undefined> => {
+    const bytes = file === undefined ? undefined : await readIfImage(file);
+    return bytes === undefined ? undefined : decode(bytes);
+  };
+  const [avatar, frame, bubble] = await Promise.all([load(layers.avatar), load(layers.frame), load(layers.bubble)]);
+
+  const key144 = blank(FALLBACK_BACKDROP);
+  const fittedFrame = frame?.cover({ w: KEY_SIZE, h: KEY_SIZE });
+
+  if (avatar !== undefined) {
+    const hole = fittedFrame === undefined ? undefined : transparentBounds(fittedFrame);
+    const area = hole ?? { x: 0, y: 0, w: KEY_SIZE, h: KEY_SIZE };
+    const fitted = avatar.cover({ w: area.w, h: area.h });
+    if (effect === "grey" || effect === "faded") {
+      markMissing(fitted);
+    }
+    if (effect === "dim" || effect === "faded") {
+      fitted.brightness(AVATAR_DIM);
+    }
+    key144.composite(fitted, area.x, area.y);
+  }
+
+  if (fittedFrame !== undefined) {
+    key144.composite(fittedFrame, 0, 0);
+  }
+
+  if (bubble !== undefined) {
+    const fitted =
+      bubble.width > KEY_SIZE || bubble.height > KEY_SIZE ? bubble.scaleToFit({ w: KEY_SIZE, h: KEY_SIZE }) : bubble;
+    key144.composite(fitted, KEY_SIZE - fitted.width, KEY_SIZE - fitted.height);
+  }
+
+  const image = await toDataUri(key144, "avatar");
+
+  if (avatarKeys.size >= MAX_CACHED_RENDERS) {
+    avatarKeys.clear();
+  }
+  avatarKeys.set(key, image);
+
+  return image;
+}
+
+/**
+ * Finds the transparent hole in a frame: the bounding box of its see-through pixels, grown by a
+ * pixel each way so the avatar runs under the frame's anti-aliased inner edge rather than stopping
+ * short of it.
+ * @param frame The frame, at key size.
+ * @returns The hole, or `undefined` when the frame has none.
+ */
+function transparentBounds(frame: Image): { x: number; y: number; w: number; h: number } | undefined {
+  const { data, width, height } = frame.bitmap;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3]! < 128) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < 0) {
+    return undefined;
+  }
+
+  const x = Math.max(0, minX - 1);
+  const y = Math.max(0, minY - 1);
+  return { x, y, w: Math.min(width, maxX + 2) - x, h: Math.min(height, maxY + 2) - y };
+}
+
 /**
  * Resolves a path inside the plugin folder.
  * @param segments Path segments below the plugin root.

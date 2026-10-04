@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -35,6 +35,26 @@ export async function getActiveAccountId(): Promise<string | undefined> {
 
   accountCache = { at: Date.now(), id };
   return id;
+}
+
+/**
+ * Finds the active account's avatar in the copy the Steam client keeps of it, so it needs no
+ * network: `config/avatarcache/<SteamID64>.png`, refreshed by Steam whenever the avatar changes.
+ * @returns Absolute path to the avatar, or `undefined` when there is no account or no cached avatar.
+ */
+export async function getActiveAvatarPath(): Promise<string | undefined> {
+  const [steam, id] = await Promise.all([findSteam(), getActiveAccountId()]);
+  if (steam === undefined || id === undefined) {
+    return undefined;
+  }
+
+  const file = path.join(steam.root, "config", "avatarcache", `${BigInt(id) + STEAMID64_BASE}.png`);
+  try {
+    await access(file);
+    return file;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
