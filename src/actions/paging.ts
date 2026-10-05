@@ -124,6 +124,16 @@ export async function goToFirstPage(deviceId: string): Promise<PageInfo | undefi
 }
 
 /**
+ * Jumps a device straight to its last page, the shortcut to the far end of a long library.
+ * @param deviceId Device to move.
+ * @returns Where the device ended up, or `undefined` when there was nothing to page through.
+ */
+export async function goToLastPage(deviceId: string): Promise<PageInfo | undefined> {
+  const info = await describePage(deviceId);
+  return info === undefined ? undefined : turnPage(deviceId, info.count - 1 - info.page);
+}
+
+/**
  * Sends a device back to its first page, used when what it lists changes underneath it: another
  * collection or another order makes the old page number meaningless.
  * @param deviceId Device to reset, or `undefined` for every device.

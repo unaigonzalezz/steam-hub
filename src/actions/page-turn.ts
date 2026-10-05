@@ -11,7 +11,15 @@ import streamDeck, {
 
 import { pluginPath, renderCaption, renderImageFile } from "../steam/artwork";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
-import { addPageListener, describePage, goToFirstPage, type PageInfo, removePageListener, turnPage } from "./paging";
+import {
+  addPageListener,
+  describePage,
+  goToFirstPage,
+  goToLastPage,
+  type PageInfo,
+  removePageListener,
+  turnPage,
+} from "./paging";
 
 /**
  * Settings for {@link PageTurn}.
@@ -43,8 +51,8 @@ const REPAINT_DELAY_MS = 50;
 /**
  * A key that pages every numbered "Show installed games" key on its device forward or back, so one
  * page of keys can reach a library of any length instead of needing a profile page per screenful.
- * Wraps at both ends: "next" on the last page comes back to the first. Holding either key jumps
- * straight back to the first page.
+ * Wraps at both ends: "next" on the last page comes back to the first. Holding "next" jumps straight
+ * to the last page, and holding "previous" straight back to the first.
  */
 @action({ UUID: "com.unai-gonzalez.steam-hub.page" })
 export class PageTurn extends SingletonAction<PageTurnSettings> {
@@ -113,11 +121,12 @@ export class PageTurn extends SingletonAction<PageTurnSettings> {
     this.#cancelPress(ev.action.id);
 
     const target = ev.action;
+    const settings = ev.payload.settings;
     this.#pressTimers.set(
       target.id,
       setTimeout(() => {
         this.#pressTimers.delete(target.id);
-        void this.#hold(target).catch((err) => streamDeck.logger.error("Could not jump to the first page", err));
+        void this.#hold(target, settings).catch((err) => streamDeck.logger.error("Could not jump to the page", err));
       }, LONG_PRESS_MS),
     );
   }
@@ -150,11 +159,13 @@ export class PageTurn extends SingletonAction<PageTurnSettings> {
   }
 
   /**
-   * Jumps straight back to the first page, whichever way the key normally turns.
+   * Jumps to the end the key points at: the last page for "next", the first for "previous".
    * @param target Key that was held.
+   * @param settings The key's settings.
    */
-  async #hold(target: KeyAction<PageTurnSettings>): Promise<void> {
-    const info = await goToFirstPage(target.device.id);
+  async #hold(target: KeyAction<PageTurnSettings>, settings: PageTurnSettings): Promise<void> {
+    const deviceId = target.device.id;
+    const info = settings.direction === "prev" ? await goToFirstPage(deviceId) : await goToLastPage(deviceId);
 
     if (info === undefined) {
       await target.showAlert(); // nothing on screen to page through

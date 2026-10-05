@@ -64,7 +64,7 @@ Set to **Open Steam Hub profile**, the key is the way in instead: press it and i
 
 Pages through your library with a single page of keys, however long it is. Put a **Next** and a **Previous** key next to your **Show Installed Games** keys: each press shifts every one of them on that device by a whole page, so slot 1 on page 3 of a 13-key page shows game 27. The page size is simply the highest slot on the device, nothing to configure. **Next** wraps round from the last page to the first; **Previous** on the first page takes you back to the profile you came from, the same way out as the Back shortcut, and shows a back arrow to say so (turn that off and it wraps to the last page instead).
 
-The key shows where you are, e.g. `3 / 20`. Hold either key to jump straight back to the first page. Changing a collection or the sort order goes back to the first page, and every start of Stream Deck opens on it too.
+The key shows where you are, e.g. `3 / 20`. Hold **Next** to jump straight to the last page, or **Previous** to jump straight back to the first. Changing a collection or the sort order goes back to the first page, and every start of Stream Deck opens on it too.
 
 ### Library Dial
 
