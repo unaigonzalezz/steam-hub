@@ -194,8 +194,8 @@ Then, with the plugin linked (step 6):
 - Install the new profile on your device and confirm the keys fill in with your real
   library.
 - Press **Next** until it wraps back to `1 / N`, and confirm **Previous** on the first
-  page shows a back arrow and returns to the profile you came from. Holding either key
-  should jump back to `1 / N`.
+  page shows a back arrow and returns to the profile you came from. Holding **Next**
+  should jump to `N / N`, and holding **Previous** back to `1 / N`.
 - Test a key set to **Open Steam Hub profile**, or the "gamesprofile" shortcut, and confirm it opens the
   right profile on that device.
 - If you have another Elgato device too, confirm `DeviceType: 0` still works as before.
