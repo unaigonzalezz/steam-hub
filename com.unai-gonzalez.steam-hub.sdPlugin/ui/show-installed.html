@@ -71,9 +71,36 @@
           </sdpi-select>
         </sdpi-item>
 
-        <sdpi-item label="Title">
-          <sdpi-checkbox setting="showTitle" global label="Write the game name"></sdpi-checkbox>
+        <sdpi-item label="Top">
+          <sdpi-select setting="topInfo" global default="none">
+            <option value="none">Nothing</option>
+            <option value="name">Game name</option>
+            <option value="playtime">Hours played</option>
+            <option value="recentPlaytime">Hours, last 2 weeks</option>
+            <option value="lastPlayed">Last played</option>
+            <option value="lastUpdated">Last updated</option>
+            <option value="achievements">Achievements</option>
+            <option value="size">Size on disk</option>
+          </sdpi-select>
         </sdpi-item>
+
+        <sdpi-item label="Bottom">
+          <sdpi-select setting="bottomInfo" global id="bottom-info">
+            <option value="none">Nothing</option>
+            <option value="name">Game name</option>
+            <option value="playtime">Hours played</option>
+            <option value="recentPlaytime">Hours, last 2 weeks</option>
+            <option value="lastPlayed">Last played</option>
+            <option value="lastUpdated">Last updated</option>
+            <option value="achievements">Achievements</option>
+            <option value="size">Size on disk</option>
+          </sdpi-select>
+        </sdpi-item>
+
+        <p class="hint">
+          Shown while the game is closed. While it runs or updates, the top makes way for the play time and the
+          bottom keeps only the name.
+        </p>
 
         <sdpi-item label="Status">
           <sdpi-checkbox
@@ -231,6 +258,13 @@
          * spells out why, since a disabled control with no explanation just looks broken.
          */
         function syncGlobals(settings) {
+          // Set up before Top and Bottom existed: show what the old name checkbox already does.
+          const bottomInfo = document.getElementById("bottom-info");
+          const bottom = (settings ?? {}).bottomInfo ?? ((settings ?? {}).showTitle === true ? "name" : "none");
+          if (bottomInfo.value !== bottom) {
+            bottomInfo.value = bottom;
+          }
+
           const hasCustomImage = ((settings ?? {}).emptyImage ?? "").trim() !== "";
 
           reset.disabled = !hasCustomImage;

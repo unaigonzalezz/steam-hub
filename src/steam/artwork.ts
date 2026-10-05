@@ -376,6 +376,12 @@ export type Caption = {
   /** Lines of a name, drawn small along the bottom edge. */
   label?: readonly string[];
 
+  /** Lines drawn small along the top edge, the way {@link Caption.label} is along the bottom. */
+  heading?: readonly string[];
+
+  /** Whether the reading goes along the top even with no label below it. */
+  top?: boolean;
+
   /**
    * Whether the key wears a status frame, the green or amber border. The text then keeps further
    * in from the edges, so it does not sit hard against the frame.
@@ -399,8 +405,8 @@ const LABEL_SIZE = 15;
 export const LABEL_LINE_LENGTH = 14;
 
 /**
- * Draws a {@link Caption} onto a key image: the label along the bottom edge, and the reading along
- * the bottom too, or along the top when there is a label to make room for.
+ * Draws a {@link Caption} onto a key image: the label along the bottom edge, the heading along the
+ * top, and the reading along the bottom too, or along the top when there is a label to make room for.
  *
  * Done as an SVG wrapped around the existing image rather than through Jimp, which would need a
  * bitmap font shipped and decoded just to print a few words; the Stream Deck renders SVG keys
@@ -422,7 +428,9 @@ export function renderCaption(base: string, caption: Caption): string {
   const bottom = KEY_SIZE - BORDER_WIDTH - margin;
   const top = BORDER_WIDTH + margin + Math.round(size * capHeight);
   const middle = KEY_SIZE / 2 + Math.round((size * capHeight) / 2);
-  const readingBaseline = label.length > 0 ? top : caption.middle === true ? middle : bottom;
+  const heading = caption.heading ?? [];
+  const headingTop = BORDER_WIDTH + margin + Math.round(LABEL_SIZE * capHeight);
+  const readingBaseline = label.length > 0 || caption.top === true ? top : caption.middle === true ? middle : bottom;
 
   // Qt's SVG renderer has no filters either, so the shadow that lifts the text off whatever art is
   // underneath is a second, offset copy of it.
@@ -441,6 +449,11 @@ export function renderCaption(base: string, caption: Caption): string {
 
     label.forEach((line, i) => {
       const y = bottom - (label.length - 1 - i) * (LABEL_SIZE + 2);
+      out += drawLine([{ text: line, size: LABEL_SIZE, fill: bright, weight: "regular" }], y + dx, dx, opacity);
+    });
+
+    heading.forEach((line, i) => {
+      const y = headingTop + i * (LABEL_SIZE + 2);
       out += drawLine([{ text: line, size: LABEL_SIZE, fill: bright, weight: "regular" }], y + dx, dx, opacity);
     });
 

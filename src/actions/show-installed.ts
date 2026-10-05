@@ -39,6 +39,7 @@ import {
   steamPageUrl,
   wrapTitle,
 } from "./common";
+import { type InfoReading, infoText, KEY_INFOS, type KeyInfo, readInfo } from "./key-info";
 import { currentPage, notify as notifyPageListeners, resetPage, setPageProvider } from "./paging";
 import { textStyleOf, type TextStyle } from "./text-style";
 
@@ -114,7 +115,22 @@ type SharedSettings = {
   sortOrder?: SortOrder;
   artStyle?: ArtStyle;
   artFit?: ArtFit;
+
+  /**
+   * Whether the key writes the game's name. Superseded by {@link SharedSettings.bottomInfo}, and only
+   * read while that is unset, so keys set up before it existed keep their name.
+   */
   showTitle?: boolean;
+
+  /** What the key writes along its top edge while the game is idle. Defaults to nothing. */
+  topInfo?: KeyInfo;
+
+  /**
+   * What the key writes along its bottom edge while the game is idle. Defaults to the name when
+   * {@link SharedSettings.showTitle} is on, nothing otherwise.
+   */
+  bottomInfo?: KeyInfo;
+
   showStatus?: boolean;
 
   /** Whether the key currently running a game also shows how long it has been open. */
@@ -1055,14 +1071,24 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     const elapsed = shared.showPlayTime === true && state?.running === true ? await elapsedSince(slot.appId) : undefined;
 
     const drawn = textStyleOf(shared) === "drawn";
-    const wantsName = shared.showTitle === true || style === "none";
     const percent = fraction === undefined ? "-" : Math.round(fraction * 100);
     const base = image ?? (await renderEmptyKey(shared.emptyImage));
 
-    // Drawn, the name goes into the image along with the clock, and the key carries no title at all.
-    const nameTitle = wantsName && !drawn ? wrapTitle(slot.name, elapsed ? 2 : 3) : "";
+    // The chosen extras only show while the game sits idle. Running or updating, the top belongs to
+    // the clock and the ring, and the bottom keeps just the name, if either edge was set to show it.
+    const edges = edgesOf(shared, style);
+    const busy = state?.running === true || state?.updating === true;
+    const text = await composeText(
+      slot.appId,
+      slot.name,
+      busy ? { top: "none", bottom: edges.top === "name" || edges.bottom === "name" ? "name" : "none" } : edges,
+      elapsed !== undefined,
+    );
+
+    // Drawn, the text goes into the image along with the clock, and the key carries no title at all.
+    const nameTitle = drawn ? "" : text.title;
     const art: ClockArt | undefined = drawn
-      ? { base, label: wantsName ? drawnName(slot.name) : [], framed: badge === "running" || badge === "updating" }
+      ? { base, ...text.drawn, framed: badge === "running" || badge === "updating" }
       : undefined;
     const title = elapsed === undefined || drawn ? nameTitle : withElapsed(nameTitle, elapsed);
 
@@ -1083,7 +1109,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
     // leaving it in would push the whole image again on every poll just because the time moved.
     await this.#paint(
       target,
-      `${slot.appId}:${style}:${badge}:${percent}:${nameTitle}:${elapsed !== undefined}:${drawn}:${art?.label.join("|") ?? ""}`,
+      `${slot.appId}:${style}:${badge}:${percent}:${nameTitle}:${elapsed !== undefined}:${drawn}:${text.signature}`,
       art === undefined ? base : clockImage(art, elapsed),
       title,
     );
@@ -1140,15 +1166,16 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
    */
   async #drawMissing(target: KeyAction<SlotSettings>, slot: LibrarySlot, shared: SharedSettings): Promise<void> {
     const style = shared.artStyle ?? DEFAULT_SHARED.artStyle;
-    const wantsTitle = shared.showTitle === true || style === "none";
+    const edges = edgesOf(shared, style);
 
     // Nothing local knows a game that was never installed here, so its name comes from the store,
     // and only when the key is actually going to write it: the art carries the logo regardless.
-    const name = wantsTitle ? ((await lookupStoreApp(slot.appId))?.name ?? slot.name) : "";
+    const wantsName = edges.top === "name" || edges.bottom === "name";
+    const name = wantsName ? ((await lookupStoreApp(slot.appId))?.name ?? slot.name) : "";
     const drawn = textStyleOf(shared) === "drawn";
-    const title = wantsTitle && !drawn ? wrapTitle(name) : "";
-    const label = wantsTitle && drawn ? drawnName(name) : [];
-    const signature = `missing:${slot.appId}:${style}:${shared.artFit ?? DEFAULT_SHARED.artFit}:${title}:${label.join("|")}`;
+    const text = await composeText(slot.appId, name, edges, false);
+    const title = drawn ? "" : text.title;
+    const signature = `missing:${slot.appId}:${style}:${shared.artFit ?? DEFAULT_SHARED.artFit}:${title}:${drawn}:${text.signature}`;
 
     if (this.#drawn.get(target.id) === signature) {
       return;
@@ -1160,7 +1187,12 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
         : ((await renderKeyImage(slot.appId, style, shared.artFit ?? DEFAULT_SHARED.artFit, "missing")) ??
           (await renderEmptyKey(shared.emptyImage)));
 
-    await this.#paint(target, signature, label.length > 0 ? renderCaption(image, { label }) : image, title);
+    await this.#paint(
+      target,
+      signature,
+      drawn ? clockImage({ base: image, ...text.drawn, framed: false }, undefined) : image,
+      title,
+    );
   }
 
   /**
@@ -1246,8 +1278,14 @@ type ClockArt = {
   /** The key's art without the clock or the name. */
   base: string;
 
-  /** The name drawn along the bottom, already wrapped, or none. */
+  /** The name or value drawn along the bottom, already wrapped, or none. */
   label: string[];
+
+  /** The name drawn along the top, already wrapped, or none. */
+  heading: string[];
+
+  /** A value drawn large along the top while there is no clock to take its place, or none. */
+  reading?: InfoReading;
 
   /** Whether the key wears a status frame, which keeps the text further in from the edges. */
   framed: boolean;
@@ -1260,13 +1298,82 @@ type ClockArt = {
  * @returns A `data:` URI, or the bare art when there is nothing to draw.
  */
 function clockImage(art: ClockArt, elapsed: string | undefined): string {
-  if (elapsed === undefined && art.label.length === 0) {
+  if (elapsed === undefined && art.reading === undefined && art.label.length === 0 && art.heading.length === 0) {
     return art.base;
   }
 
   // "1:23:45" is too wide for the size a page number gets.
-  const reading = elapsed === undefined ? {} : { main: elapsed, size: elapsed.length > 5 ? 24 : 28 };
-  return renderCaption(art.base, { ...reading, label: art.label, framed: art.framed });
+  const reading =
+    elapsed !== undefined
+      ? { main: elapsed, size: elapsed.length > 5 ? 24 : 28 }
+      : art.reading !== undefined
+        ? { ...art.reading, size: 28, top: true }
+        : {};
+  return renderCaption(art.base, { ...reading, label: art.label, heading: art.heading, framed: art.framed });
+}
+
+/** What a key writes along each edge. */
+type Edges = { top: KeyInfo; bottom: KeyInfo };
+
+/**
+ * Resolves what a key writes along each edge while its game is idle, reading keys set up before the
+ * choice existed by their old "Write the game name" setting.
+ * @param shared Shared settings.
+ * @param style The key's art style.
+ * @returns The two edges.
+ */
+function edgesOf(shared: SharedSettings, style: ArtStyle): Edges {
+  const pick = (value: unknown, fallback: KeyInfo): KeyInfo =>
+    KEY_INFOS.includes(value as KeyInfo) ? (value as KeyInfo) : fallback;
+
+  const top = pick(shared.topInfo, "none");
+  const bottom = pick(shared.bottomInfo, shared.showTitle === true ? "name" : "none");
+
+  // With no image, the name is all that tells one key from the next, so it takes a free edge.
+  if (style === "none" && top !== "name" && bottom !== "name") {
+    if (bottom === "none") {
+      return { top, bottom: "name" };
+    }
+    if (top === "none") {
+      return { top: "name", bottom };
+    }
+  }
+
+  return { top, bottom };
+}
+
+/**
+ * Works out the text a key writes along its edges, both ways it can be written.
+ * @param appId Steam application id.
+ * @param name The game's name.
+ * @param edges What goes along each edge.
+ * @param clock Whether a play time is written too, below the name in a title.
+ * @returns The title, the pieces of a drawn caption, and a signature of both.
+ */
+async function composeText(
+  appId: string,
+  name: string,
+  edges: Edges,
+  clock: boolean,
+): Promise<{ title: string; drawn: Pick<ClockArt, "label" | "heading" | "reading">; signature: string }> {
+  const [top, bottom] = await Promise.all([readInfo(edges.top, appId), readInfo(edges.bottom, appId)]);
+  const topLine = top === undefined ? "" : infoText(top);
+  const bottomLine = bottom === undefined ? "" : infoText(bottom);
+
+  // A name sharing the key with anything else gets two lines rather than three.
+  const nameTitle = wrapTitle(name, topLine || bottomLine || clock ? 2 : 3);
+  const title = [edges.top === "name" ? nameTitle : topLine, edges.bottom === "name" ? nameTitle : bottomLine]
+    .filter((line) => line !== "")
+    .join("\n");
+
+  const drawn = {
+    heading: edges.top === "name" ? drawnName(name) : [],
+    reading: top,
+    label: edges.bottom === "name" ? drawnName(name) : bottomLine === "" ? [] : [bottomLine],
+  };
+
+  const signature = `${drawn.heading.join("|")}:${topLine}:${top?.muted === true}:${drawn.label.join("|")}`;
+  return { title, drawn, signature };
 }
 
 /**

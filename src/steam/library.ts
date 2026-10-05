@@ -24,6 +24,9 @@ export type SteamGame = {
 
   /** Unix timestamp of the last session; `0` when never played. */
   lastPlayed: number;
+
+  /** Unix timestamp of when Steam last installed or updated it; `0` when not recorded. */
+  lastUpdated: number;
 };
 
 /** Bit 2 of `StateFlags`, set once a depot is fully on disk, and stays set during updates. */
@@ -339,6 +342,7 @@ function toInstalledGame(entry: ManifestEntry): SteamGame | undefined {
     library,
     sizeOnDisk: getNumber(state, "SizeOnDisk"),
     lastPlayed: getNumber(state, "LastPlayed"),
+    lastUpdated: getNumber(state, "LastUpdated"),
   };
 }
 
