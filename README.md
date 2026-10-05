@@ -115,7 +115,7 @@ Pick a **collection** to draw only from that one, a "backlog" collection, say. N
 
 ### Steam Shortcut
 
-Jumps to a specific part of the Steam client from a single key: Big Picture, your Library, Downloads, Workshop, Friends, Screenshots, the Store, Settings, switching accounts, quitting Steam, and more, including a shortcut back into this plugin's own games profile.
+Jumps to a specific part of the Steam client from a single key: Big Picture, your Library, Downloads, Workshop, your Steam profile, Friends, Screenshots, the Store, Settings, switching accounts, quitting Steam, and more.
 
 ### Steam Status
 

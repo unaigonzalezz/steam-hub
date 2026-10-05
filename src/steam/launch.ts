@@ -141,7 +141,7 @@ export async function isSteamRunning(): Promise<boolean> {
  * permitted through it.
  */
 const ALLOWED_URL =
-  /^steam:\/\/(?:rungameid\/\d{1,10}|open\/[a-z]+|close\/bigpicture|friends\/status\/(?:online|away|invisible|offline)|nav\/[a-z]+|settings\/[a-z]+|checkforupdates|changeuser|startsteamvr|stopstreaming|store(?:\/\d{1,10})?|(?:un)?install\/\d{1,10}|url\/GameHub\/\d{1,10}|openurl\/https:\/\/steamcommunity\.com\/market\/|exit)$/;
+  /^steam:\/\/(?:rungameid\/\d{1,10}|open\/[a-z]+|close\/bigpicture|friends\/status\/(?:online|away|invisible|offline)|nav\/[a-z]+|settings\/[a-z]+|checkforupdates|changeuser|startsteamvr|stopstreaming|store(?:\/\d{1,10})?|(?:un)?install\/\d{1,10}|url\/GameHub\/\d{1,10}|url\/SteamIDMyProfile|openurl\/https:\/\/steamcommunity\.com\/market\/|exit)$/;
 
 /**
  * Opens a `steam://` URL.
