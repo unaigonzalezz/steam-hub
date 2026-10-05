@@ -82,6 +82,15 @@ export async function getAppStates(): Promise<Map<string, AppState>> {
 }
 
 /**
+ * The last reading taken, however old, without ever starting a new one. For repaints between polls
+ * that only need to know which badge a key already carries, not to catch a change.
+ * @returns App states by app id, or `undefined` before the first reading.
+ */
+export function peekAppStates(): Map<string, AppState> | undefined {
+  return cache?.states;
+}
+
+/**
  * Resolves one app's status.
  * @param appId Steam application id.
  * @returns What that app is doing.

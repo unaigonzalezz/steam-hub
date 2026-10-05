@@ -8,18 +8,31 @@
   </head>
 
   <body>
-    <sdpi-item label="Set status to">
-      <sdpi-select setting="state" default="online">
-        <option value="online">Online</option>
-        <option value="away">Away</option>
-        <option value="invisible">Invisible</option>
-        <option value="offline">Offline</option>
+    <sdpi-item label="On press">
+      <sdpi-select setting="mode" id="mode">
+        <option value="cycle">Cycle Online, Away, Invisible</option>
+        <option value="set">Always set one status</option>
       </sdpi-select>
     </sdpi-item>
 
-    <sdpi-item label="Title">
+    <div id="state-row" hidden>
+      <sdpi-item label="Set status to">
+        <!-- No default: a stored state is what tells an older key apart from a cycling one. -->
+        <sdpi-select setting="state" id="state">
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="invisible">Invisible</option>
+          <option value="offline">Offline</option>
+        </sdpi-select>
+      </sdpi-item>
+    </div>
+
+    <sdpi-item label="Text">
       <sdpi-checkbox setting="showTitle" label="Write the status on the key"></sdpi-checkbox>
     </sdpi-item>
+
+    <p class="hint" id="mode-hint"></p>
+    <p class="hint">Hold the key to open your friends list.</p>
 
     <sdpi-item label="Support">
       <div class="support-block">
@@ -56,5 +69,53 @@
         </p>
       </div>
     </sdpi-item>
+    <script>
+      const client = SDPIComponents.streamDeckClient;
+      const modeSelect = document.getElementById("mode");
+      const stateSelect = document.getElementById("state");
+      const stateRow = document.getElementById("state-row");
+      const modeHint = document.getElementById("mode-hint");
+      let current = {};
+
+      /** What a key does, reading keys from before "On press" existed the way the plugin does. */
+      function effectiveMode(settings) {
+        if (settings.mode === "cycle" || settings.mode === "set") {
+          return settings.mode;
+        }
+
+        return settings.state !== undefined ? "set" : "cycle";
+      }
+
+      /** Shows the state picker only where it applies, and explains what the key shows. */
+      function syncKey(settings) {
+        current = settings ?? {};
+        const mode = effectiveMode(current);
+
+        stateRow.hidden = mode !== "set";
+        modeHint.textContent =
+          mode === "cycle"
+            ? "Shows your current status, live. Going offline from Steam's own menu is the one change it cannot see."
+            : "Shows the status this key sets.";
+
+        // Older keys have no stored mode: show what they already do rather than a blank picker.
+        if (modeSelect.value !== mode) {
+          modeSelect.value = mode;
+        }
+
+        // A key switched to "set" for the first time starts on Online rather than on nothing.
+        if (mode === "set" && current.state === undefined && stateSelect.value !== "online") {
+          stateSelect.value = "online";
+        }
+      }
+
+      client.didReceiveSettings.subscribe((ev) => syncKey(ev.payload?.settings));
+      customElements.whenDefined("sdpi-select").then(async () => {
+        syncKey((await client.getSettings())?.settings);
+      });
+
+      modeSelect.addEventListener("valuechange", () => {
+        syncKey(modeSelect.value ? { ...current, mode: modeSelect.value } : current);
+      });
+    </script>
   </body>
 </html>

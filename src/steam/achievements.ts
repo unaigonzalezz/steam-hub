@@ -1,13 +1,10 @@
 import streamDeck from "@elgato/streamdeck";
-import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 
+import { getActiveAccountId } from "./account";
 import { getObject, getString, parseBinVdf, type BinVdfObject } from "./binvdf";
 import { findSteam } from "./paths";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * The most recently unlocked achievement in one game, for whoever is currently logged into Steam.
@@ -27,45 +24,6 @@ export type LatestAchievement = {
 };
 
 const APP_ID = /^\d{1,10}$/;
-
-/** How long a resolved account id is trusted before being re-read from the registry. */
-const ACCOUNT_TTL = 5 * 60_000;
-
-let accountCache: { at: number; id: string | undefined } | undefined;
-
-/**
- * Resolves the account id (the 32-bit SteamID3 form) of whoever is currently logged into the local
- * Steam client. This is the id `appcache/stats` filenames carry, not the full 64-bit SteamID, and
- * it is what lets a shared machine's stat cache be matched to the account actually signed in.
- * @returns The account id, or `undefined` when nobody is signed in, or off Windows.
- */
-async function getActiveAccountId(): Promise<string | undefined> {
-  if (process.platform !== "win32") {
-    return undefined; // the registry key this reads is Windows-only
-  }
-
-  if (accountCache !== undefined && Date.now() - accountCache.at < ACCOUNT_TTL) {
-    return accountCache.id;
-  }
-
-  let id: string | undefined;
-  try {
-    const { stdout } = await execFileAsync(
-      "reg",
-      ["query", "HKCU\\Software\\Valve\\Steam\\ActiveProcess", "/v", "ActiveUser"],
-      { windowsHide: true, timeout: 5_000 },
-    );
-
-    const match = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout);
-    const value = match !== null ? Number.parseInt(match[1]!, 16) : 0;
-    id = value > 0 ? String(value) : undefined;
-  } catch {
-    id = undefined; // Steam not installed, not signed in, or the key is otherwise unreadable
-  }
-
-  accountCache = { at: Date.now(), id };
-  return id;
-}
 
 /**
  * How long a resolved achievement is trusted. Short enough that unlocking one while the key is on
@@ -255,4 +213,106 @@ async function readBinVdfFile(file: string): Promise<BinVdfObject | undefined> {
     }
     return undefined;
   }
+}
+
+/** How many of a game's achievements the signed-in account has unlocked. */
+export type AchievementProgress = { unlocked: number; total: number };
+
+/**
+ * How long a progress reading is trusted before the files' timestamps are checked again. A whole
+ * page of keys asks on every poll, and the schema files can run to hundreds of kilobytes.
+ */
+const PROGRESS_TTL = 30_000;
+
+const progressCache = new Map<
+  string,
+  { at: number; stamp: string; progress: AchievementProgress | undefined }
+>();
+
+/**
+ * Counts how many of a game's achievements are unlocked, from the same two stat files
+ * {@link getLatestAchievement} reads. An achievement counts as unlocked when its bit is set in its
+ * group's `data` field or it has an unlock time, which in practice always agree.
+ *
+ * Steam only writes these files for games it has fetched stats for on this machine, so a game never
+ * launched here, or one with no achievements, resolves to `undefined`.
+ * @param appId Steam application id.
+ * @returns The progress, or `undefined` when there is nothing to count.
+ */
+export async function getAchievementProgress(appId: string): Promise<AchievementProgress | undefined> {
+  if (!APP_ID.test(appId)) {
+    return undefined;
+  }
+
+  const cached = progressCache.get(appId);
+  if (cached !== undefined && Date.now() - cached.at < PROGRESS_TTL) {
+    return cached.progress;
+  }
+
+  const [steam, accountId] = await Promise.all([findSteam(), getActiveAccountId()]);
+  if (steam === undefined || accountId === undefined) {
+    return undefined;
+  }
+
+  const statsDir = path.join(steam.root, "appcache", "stats");
+  const schemaFile = path.join(statsDir, `UserGameStatsSchema_${appId}.bin`);
+  const statsFile = path.join(statsDir, `UserGameStats_${accountId}_${appId}.bin`);
+
+  // Re-parsed only when either file actually changed since the last count.
+  const stamps = await Promise.all(
+    [schemaFile, statsFile].map((file) => stat(file).then((info) => info.mtimeMs, () => 0)),
+  );
+  const stamp = `${accountId}:${stamps.join(":")}`;
+  if (cached !== undefined && cached.stamp === stamp) {
+    cached.at = Date.now();
+    return cached.progress;
+  }
+
+  const [schema, stats] = await Promise.all([readBinVdfFile(schemaFile), readBinVdfFile(statsFile)]);
+  const progress = countAchievements(getObject(getObject(schema, appId), "stats"), getObject(stats, "cache"));
+
+  progressCache.set(appId, { at: Date.now(), stamp, progress });
+  return progress;
+}
+
+/**
+ * Counts achievements across every group of a stat schema.
+ * @param schemaStats The schema's `stats` block.
+ * @param statsCache The per-user file's `cache` block.
+ * @returns The progress, or `undefined` when the schema lists no achievements or the user's file is missing.
+ */
+function countAchievements(
+  schemaStats: BinVdfObject | undefined,
+  statsCache: BinVdfObject | undefined,
+): AchievementProgress | undefined {
+  if (schemaStats === undefined || statsCache === undefined) {
+    return undefined;
+  }
+
+  let total = 0;
+  let unlocked = 0;
+
+  for (const [groupId, group] of Object.entries(schemaStats)) {
+    const bits = typeof group === "object" ? getObject(group, "bits") : undefined;
+    if (bits === undefined) {
+      continue;
+    }
+
+    const userGroup = getObject(statsCache, groupId);
+    const data = userGroup?.data;
+    const mask = typeof data === "number" || typeof data === "bigint" ? BigInt(data) : 0n;
+    const times = getObject(userGroup, "AchievementTimes");
+
+    for (const bit of Object.keys(bits)) {
+      total++;
+
+      const when = times?.[bit];
+      const timed = (typeof when === "number" || typeof when === "bigint") && Number(when) > 0;
+      if (timed || ((mask >> BigInt(bit)) & 1n) === 1n) {
+        unlocked++;
+      }
+    }
+  }
+
+  return total === 0 ? undefined : { unlocked, total };
 }

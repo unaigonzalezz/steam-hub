@@ -30,7 +30,9 @@
 
 - Every key shows the game's own store art instead of a generic icon, so a profile ends up looking like a shelf of your library.
 - Give each key a number with "Show installed games" and the plugin matches it to a game from your library on its own, no picking which game goes where by hand.
+- Point a page of keys, a dial, or the random key at one of your Steam collections, so each profile can hold its own shelf: favourites on one, co-op games on another.
 - A key can glow green while its game is running, amber while it's updating, so you can tell what's going on without leaving your desk.
+- Game keys can show more than the art: hours played, achievements unlocked, when you last played or updated a game, or its size on disk, above or below its art.
 - One key launches a random game and skips whatever it just picked, so it doesn't feel stuck on repeat.
 - Now Playing and Play Timer don't need a game configured, they just follow whatever Steam currently has open.
 - Shortcuts to Big Picture, your library, downloads, friends, and the rest of the Steam client, one key each.
@@ -43,19 +45,57 @@
 
 Launches any installed Steam game from a key. Pick one from a dropdown of your library, recently played games are grouped at the top, or type a Steam App ID directly to target a game that isn't installed on this machine yet.
 
-The key shows that game's own store art, capsule, header, hero art, or logo, your choice per key. Turn on **Show title** to draw the name over it too.
+The key shows that game's own store art, capsule, header, hero art, or logo, your choice per key. Turn on **Write the game name on the key** to draw the name over it too.
 
-Turn on **Show status** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room.
+Turn on **Frame the key while running or updating** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room.
 
 ### Show Installed Games
 
-Turns a whole profile into a gallery of your library. Give each key a **position**, `1`, `2`, `3`, and so on, in the property inspector, and the plugin fills it in with the matching game automatically, no picking a game for each key by hand.
+Turns a whole profile into a gallery of your library. Set a key's **Key** option to **Game, automatic** and it takes the next free slot from where it sits on the device, left to right, top to bottom, and the plugin fills it in with the matching game, no picking a game, or even a number, for each key by hand. **Game, fixed slot** lets you type the slot yourself for a key that should stay put; automatic keys fill the slots left free around it.
 
-Sort order (name, most recently played, or size), art style, and title all live in one shared settings panel: set them once on any key of the profile and every other key follows.
+Sort order (name, most recently played, or size), art style, and what the keys write on themselves all live in one shared settings panel: set them once on any key of the profile and every other key follows.
 
-A key left with no position doubles as the way in: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile.
+#### What each key shows
+
+**Top** and **Bottom** pick what a key writes along each edge of its art:
+
+| Option | Example |
+|---|---|
+| Nothing | |
+| Game name | `Hollow Knight` |
+| Hours played | `45 min`, `2.5 h`, `130 h` |
+| Hours, last 2 weeks | `4.6 h` |
+| Last played | `Today`, `3 d ago`, `2 mo ago`, `Never` |
+| Last updated | `Yesterday`, `1 mo ago` |
+| Achievements | `36/50` |
+| Size on disk | `850 MB`, `12.4 GB` |
+
+A value on top is drawn large, the way the play time is; at the bottom it is drawn small, like the name. With **Text** set to **Stream Deck title**, both are written as lines of the title instead, so you can style them from the title menu. Values that mean "nothing yet", a game never played or no achievements unlocked, are drawn dimmer.
+
+These only show while the game is closed. While it runs or updates, the top makes way for the play time (if **Play time** is on) and the download ring, and the bottom keeps only the name, if either edge was set to show it.
+
+> **Good to know**
+> - **Hours played** and **Hours, last 2 weeks** come from what Steam saves on your PC, which it only updates when a game closes, so they don't count up while you play. **Play time** is what counts up live.
+> - **Achievements** only show for games whose stats Steam has downloaded on this PC, usually any game you have launched here at least once. Others leave that edge empty.
+> - **Last updated** and **Size on disk** only exist for installed games, so games shown with **Not installed** leave that edge empty.
+> - With **Image** set to **No image**, the game name takes whichever edge is free, so every key can still be told apart.
+> - **Last played** and **Last updated** look alike on a key; picking both, one on each edge, can be hard to read at a glance.
+
+> **Updating from an earlier version?** The **Write the game name** checkbox has been replaced by **Top** and **Bottom**. There's nothing to redo: keys that had it on show the game name at the bottom, and keys that had it off show nothing, exactly as before. Your old choice is kept until you change either picker, and from then on **Top** and **Bottom** are what count.
+
+Each key can also be pointed at one of your **Steam collections** instead of the whole library, so its numbers count through that collection alone. Set it on one key and press **Use on every key of this page** to copy it across, then repeat on another profile with a different collection: one for favourites, one for co-op, one for whatever you're playing through right now. By default only installed games appear; turn on **Not installed** and the rest of the collection follows them, in black and white, most recently played first, and pressing one opens Steam's install dialog. Dynamic collections aren't offered, since Steam stores those as a filter rather than a list of games.
+
+Set to **Open Steam Hub profile**, the key is the way in instead: press it and it jumps straight to the games profile, handy as the one "open my library" key on a device's main profile. A newly dragged key starts like this, and so do keys set up before the Key option existed with no number, so existing entry keys keep working.
 
 > The original Stream Deck, the MK2, the Stream Deck XL, the Stream Deck +, and the Stream Deck + XL ship with a ready-made profile today. See [Requirements](#requirements) and [Contributing](#contributing) if you own another Elgato device.
+
+### Library Page
+
+Pages through your library with a single page of keys, however long it is. Put a **Next** and a **Previous** key next to your **Show Installed Games** keys: each press shifts every one of them on that device by a whole page, so slot 1 on page 3 of a 13-key page shows game 27. The page size is simply the highest slot on the device, nothing to configure. **Next** wraps round from the last page to the first; **Previous** on the first page takes you back to the profile you came from, the same way out as the Back shortcut, and shows a back arrow to say so (turn that off and it wraps to the last page instead).
+
+The key shows where you are, e.g. `3 / 20`. Hold **Next** to jump straight to the last page, or **Previous** to jump straight back to the first. Changing a collection or the sort order goes back to the first page, and every start of Stream Deck opens on it too.
+
+> **Updating from an earlier version?** Holding **Next** used to jump back to the first page, the same as holding **Previous**. It now jumps to the last page instead.
 
 ### Library Dial
 
@@ -65,21 +105,23 @@ Where **Show Installed Games** needs a key for every game you want within reach,
 
 When the game on show is the one currently running, the art is framed green, amber while it's updating, and the position line counts up alongside it, the same signals the keys use.
 
-Sort order, art style, framing, what a tap opens, and both of those indicators are set per dial in the property inspector.
+Sort order, collection, art style, framing, what a tap opens, and both of those indicators are set per dial in the property inspector.
 
 ### Random Game
 
 Launches a random installed game on every press, and keeps showing that pick's art afterward so the key stays useful between presses instead of going blank.
 
-Never repeats the same game twice in a row while more than one is installed. Turn off **Remember last pick** if you'd rather the key reset between presses instead of showing the last game launched.
+Pick a **collection** to draw only from that one, a "backlog" collection, say. Never repeats the same game twice in a row while more than one is available. Turn off **Remember last pick** if you'd rather the key reset between presses instead of showing the last game launched.
 
 ### Steam Shortcut
 
-Jumps to a specific part of the Steam client from a single key: Big Picture, your Library, Downloads, Workshop, Friends, Screenshots, the Store, Settings, switching accounts, quitting Steam, and more, including a shortcut back into this plugin's own games profile.
+Jumps to a specific part of the Steam client from a single key: Big Picture, your Library, Downloads, Workshop, your Steam profile, Friends, Screenshots, the Store, Settings, switching accounts, quitting Steam, and more.
 
 ### Steam Status
 
-Switches your Steam presence, online, away, invisible, or offline, with a single press. Steam keeps your current status server-side, so the key can set it, it just can't show which one is currently active.
+Shows your Steam avatar, framed in the colour of your current status, and follows it live. By default each press moves to the next of online, away and invisible; offline is left out of the cycle, since it closes your friends list and is easy to land on by accident. Set **On press** to **Always set one status** instead for a key that always switches to the same status, offline included. Hold the key to open your friends list.
+
+> Steam doesn't save going offline the way it saves the other statuses. Set from this plugin it's picked up anyway; set from Steam's own menu, the key keeps showing the previous status until the next change.
 
 ### Now Playing
 
@@ -94,6 +136,8 @@ A stopwatch key with no game to configure either. It counts up for as long as a 
 No game to pick here either, the key follows whatever Steam currently has open and shows the icon of the most recently unlocked achievement in that game. Pressing it opens that game's Community Hub, same as Now Playing and Play Timer.
 
 Read entirely from Steam's own local stat cache, so it needs no Steam Web API key. That also means it only knows about a game once Steam has fetched its stats locally, launching it once is enough, and it stays idle until something has actually unlocked.
+
+The same stat cache is what **Show Installed Games** keys read to show how many achievements you've unlocked in each game, with **Achievements** picked for their top or bottom edge.
 
 Unlocking one while **Show Installed Games** is on screen also takes over that game's own key for 3 seconds, showing the achievement instead of the usual art before switching back on its own, so you catch it even without a Last Achievement key configured.
 
@@ -120,12 +164,30 @@ Opens one specific game's store page, Community Hub, or uninstall dialog, using 
 1. **Install the plugin**, see [Download](#download) below.
 2. **Drag an action** onto any key:
    - **Launch Game**, pick a game from the dropdown.
-   - **Show Installed Games**, set a position number to fill that key automatically.
+   - **Show Installed Games**, set **Key** to **Game, automatic** to fill that key automatically.
    - **Random Game**, launches something different on every press.
    - **Steam Shortcut** or **Steam Status**, pick a destination or state.
 3. **Press the key.**
 
-To fill a whole profile with your library, drag **Show Installed Games** onto every key you want to use and number them `1`, `2`, `3`, and so on. The rest of the profile fills itself in.
+To fill a whole profile with your library, drag **Show Installed Games** onto every key you want to use, set one of them to **Game, automatic**, and press **Use on every key of this page**. The rest of the profile fills itself in.
+
+### How a games profile works
+
+A games profile is **one page** of keys, however big your library is:
+
+- **Game keys** (**Show Installed Games**, `N` of them) show the first `N` games of the list. Automatic keys number themselves in grid order; fixed keys keep the slot typed into them.
+- A **Library Page** key set to **Next** moves every game key on the device forward by `N`, and wraps from the last page back to the first. One set to **Previous** moves back, and on the first page it becomes the way out, a back arrow that returns to the profile you came from. Holding either jumps straight to the last or the first page.
+- **A key set to Open Steam Hub profile** is the way in. Put it on your main profile; pressing it opens the bundled Steam Hub profile.
+
+The page is kept per device, starts on page 1 every time Stream Deck starts, and goes back to page 1 when the list changes underneath it (another collection, sort order, or download/not-installed setting).
+
+**One profile per collection.** Every game key can be pointed at a Steam collection. To have a profile for favourites and another for co-op games:
+
+1. Duplicate the Steam Hub profile in the Stream Deck app (or build one with automatic game keys and two Library Page keys).
+2. On any game key, pick the **Collection** and press **Use on every key of this page**.
+3. To get there, use Stream Deck's own **Switch Profile** action, pointing at the new profile. A key set to Open Steam Hub profile only ever opens the bundled one, since a plugin can only switch to profiles it ships itself.
+
+The **Previous** key's way out works from any of these profiles: it always returns to wherever you came from.
 
 ---
 
@@ -153,8 +215,21 @@ Pull requests are welcome on [GitHub](https://github.com/unaigonzalezz/steam-hub
 
 ---
 
+## Acknowledgements
+
+Text drawn on the keys (page numbers, play time, download progress, game names and the details shown on game keys) uses the **Gila** typeface by **Khurasan**, free for personal and commercial use.
+
+Key icons are built from these icon sets:
+
+- [IconaMoon](https://github.com/dariushhpg1/IconaMoon) by Dariush Habibpour, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- [Sargam Icons](https://github.com/planetabhi/sargam-icons) by Abhimanyu Rana, licensed under [MIT](https://opensource.org/licenses/MIT).
+
+---
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
+
+The Gila font files in `com.unai-gonzalez.steam-hub.sdPlugin/fonts/` belong to their author and are not covered by the MIT license.
 
 ---

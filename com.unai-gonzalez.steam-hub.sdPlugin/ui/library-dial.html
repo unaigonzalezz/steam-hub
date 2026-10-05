@@ -8,93 +8,142 @@
   </head>
 
   <body>
-    <sdpi-item label="Order">
-      <sdpi-select setting="sortOrder" default="name">
-        <option value="name">Name</option>
-        <option value="recent">Recently played</option>
-        <option value="size">Size on disk</option>
-      </sdpi-select>
-    </sdpi-item>
+    <details class="group" id="group-list" open>
+      <summary>Library</summary>
+      <div class="group-body">
+        <sdpi-item label="Collection">
+          <sdpi-select
+            setting="collection"
+            datasource="getCollections"
+            show-refresh
+            default=""
+            loading="Reading your collections…"
+          ></sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Image">
-      <sdpi-select setting="artStyle" default="hero">
-        <option value="hero">Wide background</option>
-        <option value="header">Banner</option>
-        <option value="capsule">Vertical capsule</option>
-        <option value="logo">Logo on background</option>
-        <option value="none">No image</option>
-      </sdpi-select>
-    </sdpi-item>
+        <sdpi-item label="Order by">
+          <sdpi-select setting="sortOrder" default="name">
+            <option value="name">Name (A–Z)</option>
+            <option value="recent">Recently played</option>
+            <option value="size">Size on disk</option>
+          </sdpi-select>
+        </sdpi-item>
 
-    <sdpi-item label="Framing">
-      <sdpi-select setting="artFit" default="fill">
-        <option value="fill">Fill the display</option>
-        <option value="fit">Show it all</option>
-      </sdpi-select>
-    </sdpi-item>
+        <sdpi-item label="Downloads">
+          <sdpi-checkbox setting="showInstalling" default="true" label="Show new installs in progress"></sdpi-checkbox>
+        </sdpi-item>
 
-    <sdpi-item label="Tap opens">
-      <sdpi-select setting="tapOpens" default="store">
-        <option value="store">Store page</option>
-        <option value="hub">Community hub</option>
-        <option value="none">Nothing</option>
-      </sdpi-select>
-    </sdpi-item>
-
-    <sdpi-item label="Status">
-      <sdpi-checkbox setting="showStatus" default="true" label="Frame the art while the game is running"></sdpi-checkbox>
-    </sdpi-item>
-
-    <sdpi-item label="New installs">
-      <sdpi-checkbox
-        setting="showInstalling"
-        default="true"
-        label="Add an entry while a game you don't have yet is downloading"
-      ></sdpi-checkbox>
-    </sdpi-item>
-
-    <p class="hint">
-      That entry fills in with an amber ring as the download progresses, and sits at the front of the scroll.
-    </p>
-
-    <sdpi-item label="Play time">
-      <sdpi-checkbox setting="showPlayTime" default="true" label="Count up while the game on show is running"></sdpi-checkbox>
-    </sdpi-item>
-
-    <sdpi-item label="Support">
-      <div class="support-block">
-        <div class="support-links">
-          <a
-            onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
-          </a>
-
-          <a
-            onclick="
-              SDPIComponents.streamDeckClient.send('openUrl', {
-                url: 'https://github.com/unaigonzalezz/steam-hub',
-              })
-            "
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
-          </a>
-        </div>
-
-        <p class="support-text">
-          If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the project on
-          GitHub ⭐.
-        </p>
-
-        <p class="support-text">
-          Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
-          future updates.
-        </p>
+        <p class="hint">They go first in the scroll while downloading.</p>
       </div>
-    </sdpi-item>
+    </details>
+
+    <details class="group" id="group-look">
+      <summary>Appearance <span class="summary-note">image, status, play time</span></summary>
+      <div class="group-body">
+        <sdpi-item label="Image">
+          <sdpi-select setting="artStyle" default="hero">
+            <option value="logo">Logo on background</option>
+            <option value="hero">Wide background</option>
+            <option value="header">Banner</option>
+            <option value="capsule">Vertical capsule</option>
+            <option value="none">No image</option>
+          </sdpi-select>
+        </sdpi-item>
+
+        <sdpi-item label="Framing">
+          <sdpi-select setting="artFit" default="fill">
+            <option value="fill">Fill the display</option>
+            <option value="fit">Show it all</option>
+          </sdpi-select>
+        </sdpi-item>
+
+        <sdpi-item label="Status">
+          <sdpi-checkbox setting="showStatus" default="true" label="Frame while running or updating"></sdpi-checkbox>
+        </sdpi-item>
+
+        <sdpi-item label="Play time">
+          <sdpi-checkbox setting="showPlayTime" default="true" label="Count up while the game runs"></sdpi-checkbox>
+        </sdpi-item>
+      </div>
+    </details>
+
+    <details class="group" id="group-controls">
+      <summary>Controls <span class="summary-note">tap</span></summary>
+      <div class="group-body">
+        <sdpi-item label="Tap opens">
+          <sdpi-select setting="tapOpens" default="store">
+            <option value="store">Store page</option>
+            <option value="hub">Community Hub</option>
+            <option value="none">Nothing</option>
+          </sdpi-select>
+        </sdpi-item>
+
+        <p class="hint">Turn to scroll, press to launch, tap the display for the page above.</p>
+      </div>
+    </details>
+
+    <details class="group" id="group-help">
+      <summary>Help &amp; support</summary>
+      <div class="group-body">
+        <sdpi-item label="Support">
+          <div class="support-block">
+            <div class="support-links">
+              <a
+                onclick="SDPIComponents.streamDeckClient.send('openUrl', { url: 'https://ko-fi.com/X8X4LBFTT' })"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img height="30" src="./img/kofi.png" alt="Buy me a coffee on Ko-fi" />
+              </a>
+
+              <a
+                onclick="
+                  SDPIComponents.streamDeckClient.send('openUrl', {
+                    url: 'https://github.com/unaigonzalezz/steam-hub',
+                  })
+                "
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img height="30" src="./img/star.png" alt="Star this project on GitHub" />
+              </a>
+            </div>
+
+            <p class="support-text">
+              If you enjoy this project, you can support its development by buying me a coffee ☕ or starring the
+              project on GitHub ⭐.
+            </p>
+
+            <p class="support-text">
+              Every coffee and every star helps me continue improving the plugin, adding new features, and maintaining
+              future updates.
+            </p>
+          </div>
+        </sdpi-item>
+      </div>
+    </details>
+
+    <script>
+      (() => {
+        // Remember which groups were left open. Storage can be unavailable, in which case every
+        // inspector simply opens with the defaults.
+        for (const group of document.querySelectorAll("details.group")) {
+          const key = `steam-hub.library-dial.${group.id}`;
+
+          try {
+            const stored = localStorage.getItem(key);
+            if (stored !== null) {
+              group.open = stored === "open";
+            }
+          } catch {}
+
+          group.addEventListener("toggle", () => {
+            try {
+              localStorage.setItem(key, group.open ? "open" : "closed");
+            } catch {}
+          });
+        }
+      })();
+    </script>
   </body>
 </html>

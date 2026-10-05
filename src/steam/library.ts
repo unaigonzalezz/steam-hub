@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { getLiveDownload } from "./download-log";
 import { exists, findSteam, forgetSteam, type SteamInstall, withTimeout } from "./paths";
 import { getNumber, getObject, getString, parseVdf, type VdfObject } from "./vdf";
 
@@ -23,6 +24,9 @@ export type SteamGame = {
 
   /** Unix timestamp of the last session; `0` when never played. */
   lastPlayed: number;
+
+  /** Unix timestamp of when Steam last installed or updated it; `0` when not recorded. */
+  lastUpdated: number;
 };
 
 /** Bit 2 of `StateFlags`, set once a depot is fully on disk, and stays set during updates. */
@@ -338,6 +342,7 @@ function toInstalledGame(entry: ManifestEntry): SteamGame | undefined {
     library,
     sizeOnDisk: getNumber(state, "SizeOnDisk"),
     lastPlayed: getNumber(state, "LastPlayed"),
+    lastUpdated: getNumber(state, "LastUpdated"),
   };
 }
 
@@ -349,14 +354,18 @@ type ManifestProgress = {
 
   /** Fraction downloaded, in `[0, 1]`; `undefined` when `BytesToDownload` is `0` or absent. */
   fraction?: number;
+
+  /** When Steam last launched the app, in epoch seconds; `0` when never. */
+  lastPlayed: number;
 };
 
 /**
  * How long a progress scan stays fresh. Much shorter than {@link getInstalledGames}'s own cache:
  * bytes downloaded moves continuously during an active transfer, where the list of installed games
- * barely changes minute to minute.
+ * barely changes minute to minute. Just under the once-a-second clock that repaints download rings,
+ * so each tick reads fresh numbers while keys painted in the same tick still share one scan.
  */
-const PROGRESS_TTL = 3_000;
+const PROGRESS_TTL = 800;
 
 let progressCache: { at: number; progress: Map<string, ManifestProgress> } | undefined;
 let progressScanning: Promise<Map<string, ManifestProgress>> | undefined;
@@ -378,8 +387,9 @@ async function getManifestProgress(): Promise<Map<string, ManifestProgress>> {
   }
 
   if (progressScanning === undefined) {
-    const task = scanManifests()
-      .then((entries) => {
+    // The manifests only move when a download stops; the content log follows it while it runs.
+    const task = Promise.all([scanManifests(), getLiveDownload()])
+      .then(([entries, live]) => {
         const progress = new Map<string, ManifestProgress>();
         const incomplete = new Set<string>();
 
@@ -395,9 +405,16 @@ async function getManifestProgress(): Promise<Map<string, ManifestProgress>> {
 
           const toDownload = getNumber(entry.state, "BytesToDownload");
           const downloaded = getNumber(entry.state, "BytesDownloaded");
-          const fraction = toDownload > 0 ? Math.min(1, Math.max(0, downloaded / toDownload)) : undefined;
+          const fromManifest = toDownload > 0 ? Math.min(1, Math.max(0, downloaded / toDownload)) : undefined;
 
-          progress.set(entry.appId, { appId: entry.appId, name: entry.name, fullyInstalled, fraction });
+          // The live estimate starts from the exact count logged when the download (re)started, and
+          // the manifest is exact again whenever it stops, so the larger of the two is the better one.
+          const fraction =
+            live?.appId === entry.appId ? Math.max(fromManifest ?? 0, live.fraction) : fromManifest;
+
+          const lastPlayed = getNumber(entry.state, "LastPlayed");
+
+          progress.set(entry.appId, { appId: entry.appId, name: entry.name, fullyInstalled, fraction, lastPlayed });
         }
 
         // An app that was mid-install last scan and is not any more, whether it finished or its
@@ -464,6 +481,18 @@ export async function getInstallingGames(): Promise<InstallingGame[]> {
  */
 export async function getDownloadFraction(appId: string): Promise<number | undefined> {
   return (await getManifestProgress()).get(appId)?.fraction;
+}
+
+/**
+ * When Steam last launched an app, read fresh off its manifest rather than from
+ * {@link getInstalledGames}'s minute-long cache. Steam stamps `LastPlayed` the moment it launches a
+ * game, not when the game exits, so while the game is running this is when its session began.
+ * @param appId Steam application id.
+ * @returns Epoch milliseconds, or `undefined` when the app has never been launched or is unknown.
+ */
+export async function getLastPlayed(appId: string): Promise<number | undefined> {
+  const seconds = (await getManifestProgress()).get(appId)?.lastPlayed ?? 0;
+  return seconds > 0 ? seconds * 1000 : undefined;
 }
 
 /**

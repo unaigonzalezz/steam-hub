@@ -113,7 +113,7 @@ async function waitForApp(appId: string, timeoutMs: number): Promise<boolean> {
  * Whether the Steam client is running, from the process id it keeps in the registry while open.
  * @returns `true` when it is, and also when that cannot be told, so a launch is never held back.
  */
-async function isSteamRunning(): Promise<boolean> {
+export async function isSteamRunning(): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync(
       "reg",
@@ -139,9 +139,12 @@ async function isSteamRunning(): Promise<boolean> {
  * generic `openurl/%s` (opens a URL in Steam's own browser). That verb takes an arbitrary URL as
  * its argument, so rather than opening the allowlist to any URL, only the literal Market address is
  * permitted through it.
+ *
+ * `url/SteamIDMyProfile` is the signed-in user's own profile, the page Steam's own "View profile"
+ * button resolves in its UI.
  */
 const ALLOWED_URL =
-  /^steam:\/\/(?:rungameid\/\d{1,10}|open\/[a-z]+|close\/bigpicture|friends\/status\/(?:online|away|invisible|offline)|nav\/[a-z]+|settings\/[a-z]+|checkforupdates|changeuser|startsteamvr|stopstreaming|store(?:\/\d{1,10})?|uninstall\/\d{1,10}|url\/GameHub\/\d{1,10}|openurl\/https:\/\/steamcommunity\.com\/market\/|exit)$/;
+  /^steam:\/\/(?:rungameid\/\d{1,10}|open\/[a-z]+|close\/bigpicture|friends\/status\/(?:online|away|invisible|offline)|nav\/[a-z]+|settings\/[a-z]+|checkforupdates|changeuser|startsteamvr|stopstreaming|store(?:\/\d{1,10})?|(?:un)?install\/\d{1,10}|url\/GameHub\/\d{1,10}|url\/SteamIDMyProfile|openurl\/https:\/\/steamcommunity\.com\/market\/|exit)$/;
 
 /**
  * Opens a `steam://` URL.

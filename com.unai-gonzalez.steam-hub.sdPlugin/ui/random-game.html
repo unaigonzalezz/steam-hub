@@ -12,11 +12,21 @@
       <sdpi-checkbox setting="rememberLast" default="true" label="Show the game that was picked"></sdpi-checkbox>
     </sdpi-item>
 
+    <sdpi-item label="Collection">
+      <sdpi-select
+        setting="collection"
+        datasource="getCollections"
+        show-refresh
+        default=""
+        loading="Reading your collections…"
+      ></sdpi-select>
+    </sdpi-item>
+
     <sdpi-item label="Image">
       <sdpi-select setting="artStyle" default="logo">
+        <option value="logo">Logo on background</option>
         <option value="capsule">Vertical capsule</option>
         <option value="header">Banner</option>
-        <option value="logo">Logo on background</option>
         <option value="hero">Wide background</option>
         <option value="none">No image</option>
       </sdpi-select>

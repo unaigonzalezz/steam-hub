@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Library Page</title>
+    <meta charset="utf-8" />
+    <script src="lib/sdpi-components.js"></script>
+    <link rel="stylesheet" href="lib/pi.css" />
+  </head>
+
+  <body>
+    <sdpi-item label="Direction">
+      <sdpi-select setting="direction" default="next">
+        <option value="next">Next page</option>
+        <option value="prev">Previous page</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Position">
+      <sdpi-checkbox setting="showPosition" default="true" label="Show the page, e.g. 3 / 20"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="First page">
+      <sdpi-checkbox
+        setting="backOnFirst"
+        default="true"
+        label="Previous goes back to the profile you came from"
+      ></sdpi-checkbox>
+    </sdpi-item>
+
+    <p class="hint">
+      Pages every Show installed games key on this device. One page of keys reaches your whole library.
+      Next wraps round from the last page to the first; turn off the option above and Previous wraps the other way
+      instead of leaving.
+    </p>
+
+    <p class="hint">Hold Next to jump straight to the last page, or Previous to jump back to the first.</p>
+  </body>
+</html>

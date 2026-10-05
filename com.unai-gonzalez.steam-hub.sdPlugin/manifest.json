@@ -1,6 +1,6 @@
 {
   "Name": "Steam Hub",
-  "Version": "1.2.0.0",
+  "Version": "1.3.0.0",
   "Author": "Unai Gonzalez",
   "Actions": [
     {
@@ -48,8 +48,23 @@
         {
           "Image": "imgs/actions/slot/key",
           "TitleAlignment": "middle",
-          "FontFamily": "Arial Black",
-          "FontSize": 18
+          "FontFamily": "Arial Black"
+        }
+      ]
+    },
+    {
+      "Name": "Library page",
+      "UUID": "com.unai-gonzalez.steam-hub.page",
+      "Icon": "imgs/actions/page/icon",
+      "Tooltip": "Turns every Show installed games key on the device to the next or previous page of your library.",
+      "PropertyInspectorPath": "ui/page-turn.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/page/key",
+          "TitleAlignment": "bottom"
         }
       ]
     },
@@ -114,8 +129,7 @@
         {
           "Image": "imgs/actions/playtimer/key",
           "TitleAlignment": "middle",
-          "FontFamily": "Arial Black",
-          "FontSize": 15
+          "FontFamily": "Arial Black"
         }
       ]
     },
@@ -214,13 +228,6 @@
     {
       "Name": "Steam Hub + XL",
       "DeviceType": 13,
-      "Readonly": false,
-      "DontAutoSwitchWhenInstalled": true,
-      "AutoInstall": true
-    },
-    {
-      "Name": "Steam Hub XL",
-      "DeviceType": 2,
       "Readonly": false,
       "DontAutoSwitchWhenInstalled": true,
       "AutoInstall": true

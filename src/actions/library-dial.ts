@@ -3,6 +3,7 @@ import streamDeck, {
   type DialDownEvent,
   type DialRotateEvent,
   type DidReceiveSettingsEvent,
+  type SendToPluginEvent,
   SingletonAction,
   type TouchTapEvent,
   type WillAppearEvent,
@@ -12,10 +13,18 @@ import streamDeck, {
 import { type ArtFit, type ArtStyle, renderStripImage, type Size, type StatusBadge } from "../steam/artwork";
 import { launchGame, openSteamUrl } from "../steam/launch";
 import { getDownloadFraction, type SortOrder } from "../steam/library";
-import { addStatusListener, removeStatusListener } from "../steam/monitor";
-import { getRunningGame } from "../steam/running";
-import { getAppStates } from "../steam/status";
-import { badgeFor, formatElapsed, type GamePagePage, librarySlots, type LibrarySlot, steamPageUrl } from "./common";
+import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
+import { getCurrentSession, getRunningGame } from "../steam/running";
+import { getAppStates, peekAppStates } from "../steam/status";
+import {
+  badgeFor,
+  collectionPickerItems,
+  formatElapsed,
+  type GamePagePage,
+  librarySlots,
+  type LibrarySlot,
+  steamPageUrl,
+} from "./common";
 
 /**
  * Per-dial settings for {@link LibraryDial}.
@@ -36,6 +45,9 @@ type LibraryDialSettings = {
 
   /** Ordering of the library the dial scrolls through. */
   sortOrder?: SortOrder;
+
+  /** Id of the Steam collection the dial scrolls through; empty or absent for the whole library. */
+  collection?: string;
 
   /**
    * What tapping the touch display opens. `"none"` leaves the tap doing nothing.
@@ -125,11 +137,23 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
   /** Bound so the same reference can be added to and removed from the shared poll. */
   readonly #onPoll = (): Promise<void> => this.#redrawAll();
 
-  /** Whether {@link LibraryDial.#onPoll} is currently registered. */
+  /** Bound for the same reason, for the once-a-second clock. */
+  readonly #onClock = (): Promise<void> => this.#tickAll();
+
+  /** Whether {@link LibraryDial.#onPoll} and {@link LibraryDial.#onClock} are currently registered. */
   #listening = false;
 
   /** What each dial currently shows, so a poll only repaints what actually changed. */
   readonly #drawn = new Map<string, string>();
+
+  /**
+   * Dials currently showing their game's play time, so the clock can tick every second without
+   * re-rendering the art or reading anything.
+   */
+  readonly #clocks = new Map<string, { target: DialTarget; appId: string }>();
+
+  /** Dials currently showing a download ring, so the clock can keep it filling between polls. */
+  readonly #downloads = new Map<string, WillAppearEvent<LibraryDialSettings>["action"]>();
 
   /**
    * Draws the dial when it comes into view, and starts watching for the running game so the
@@ -140,6 +164,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
+      addClockListener(this.#onClock);
     }
 
     await this.#draw(ev.action, ev.payload.settings);
@@ -151,11 +176,14 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    */
   override onWillDisappear(ev: WillDisappearEvent<LibraryDialSettings>): void {
     this.#drawn.delete(ev.action.id);
+    this.#clocks.delete(ev.action.id);
+    this.#downloads.delete(ev.action.id);
 
     // `actions` still includes the departing dial at this point, hence the count of one.
     if (this.#listening && [...this.actions].length <= 1) {
       this.#listening = false;
       removeStatusListener(this.#onPoll);
+      removeClockListener(this.#onClock);
     }
   }
 
@@ -174,12 +202,56 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
   }
 
   /**
+   * Advances the clock on every dial showing one, between polls. Only the position line is sent,
+   * from the session the last poll found, so nothing is read and the art is not re-rendered.
+   */
+  async #tickAll(): Promise<void> {
+    // Download rings follow the manifests on disk, which Steam rewrites as bytes arrive; those are
+    // cheap to re-read, unlike the registry, so the ring fills every second rather than every poll.
+    await Promise.all(
+      [...this.#downloads.values()].map(async (target) =>
+        this.#draw(target, await target.getSettings<LibraryDialSettings>(), false),
+      ),
+    );
+
+    const session = getCurrentSession();
+    if (session === undefined) {
+      return;
+    }
+
+    const position = { value: formatElapsed(Date.now() - session.since), ...CLOCK_STYLE };
+
+    await Promise.all(
+      [...this.#clocks.values()].map(async ({ target, appId }) => {
+        if (appId === session.appId) {
+          await target.setFeedback({ position });
+        }
+      }),
+    );
+  }
+
+  /**
    * Redraws when the property inspector changes something, so a new sort order or art style shows
    * up without waiting for the next turn of the dial.
    * @param ev Event arguments.
    */
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<LibraryDialSettings>): Promise<void> {
     await this.#draw(ev.action, ev.payload.settings);
+  }
+
+  /**
+   * Serves the property inspector's collection picker.
+   * @param ev Event arguments.
+   */
+  override async onSendToPlugin(
+    ev: SendToPluginEvent<{ event?: string; isRefresh?: boolean }, LibraryDialSettings>,
+  ): Promise<void> {
+    if (ev.payload?.event === "getCollections") {
+      await streamDeck.ui.sendToPropertyInspector({
+        event: "getCollections",
+        items: await collectionPickerItems(ev.payload.isRefresh === true),
+      });
+    }
   }
 
   /**
@@ -271,7 +343,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * @returns The combined slot list.
    */
   async #slots(settings: LibraryDialSettings): Promise<LibrarySlot[]> {
-    return librarySlots(settings.sortOrder ?? DEFAULT_SORT, settings.showInstalling !== false);
+    return librarySlots(settings.sortOrder ?? DEFAULT_SORT, settings.showInstalling !== false, settings.collection);
   }
 
   /**
@@ -292,19 +364,31 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * Draws the dial from scratch, scanning the library first.
    * @param target The dial to draw on.
    * @param settings Its settings.
+   * @param live Whether to read the registry afresh; a clock tick reuses the last poll's reading.
    */
-  async #draw(target: WillAppearEvent<LibraryDialSettings>["action"], settings: LibraryDialSettings): Promise<void> {
+  async #draw(
+    target: WillAppearEvent<LibraryDialSettings>["action"],
+    settings: LibraryDialSettings,
+    live = true,
+  ): Promise<void> {
     if (!target.isDial()) {
       return; // the manifest only offers this action on encoders
     }
 
     const slots = await this.#slots(settings);
     if (slots.length === 0) {
+      this.#downloads.delete(target.id);
       await this.#drawEmpty(target);
       return;
     }
 
-    await this.#paint(target, settings, slots, clampCursor(settings.cursor, slots.length));
+    const ringing = await this.#paint(target, settings, slots, clampCursor(settings.cursor, slots.length), live);
+
+    if (ringing) {
+      this.#downloads.set(target.id, target);
+    } else {
+      this.#downloads.delete(target.id);
+    }
   }
 
   /**
@@ -313,35 +397,53 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * @param settings Its settings.
    * @param slots The combined slot list.
    * @param cursor Position within it.
+   * @param live Whether to read the registry afresh; a clock tick reuses the last poll's reading.
+   * @returns Whether the dial now shows a download ring, which the clock then keeps filling.
    */
   async #paint(
     target: DialTarget,
     settings: LibraryDialSettings,
     slots: LibrarySlot[],
     cursor: number,
-  ): Promise<void> {
+    live = true,
+  ): Promise<boolean> {
     const slot = slots[cursor]!;
+    this.#clocks.delete(target.id); // put back below, if this dial still has a clock to show
 
     if (slot.installing) {
       await this.#paintInstalling(target, slot, settings);
-      return;
+      return true;
     }
 
-    const state = (await getAppStates()).get(slot.appId);
+    const states = live ? await getAppStates() : (peekAppStates() ?? (await getAppStates()));
+    const state = states.get(slot.appId);
     const badge = badgeFor(settings.showStatus !== false, state);
 
     // Only worth the extra file read when there is actually a ring to fill in.
     const fraction = badge === "updating" ? await getDownloadFraction(slot.appId) : undefined;
 
-    const position = await this.#position(settings, slot, cursor, slots.length, badge);
+    const since = await this.#runningSince(settings, slot, badge);
+
+    // The clock replaces the position rather than sharing the line with it. There is one row to
+    // work with, and at a size worth reading only one of the two fits; of the pair, where you are
+    // in the library is the one the art already tells you.
+    const position =
+      since === undefined
+        ? { value: `${cursor + 1} / ${slots.length}`, ...PLACE_STYLE }
+        : { value: formatElapsed(Date.now() - since), ...CLOCK_STYLE };
+
+    if (since !== undefined) {
+      this.#clocks.set(target.id, { target, appId: slot.appId });
+    }
 
     // The poll fires every few seconds whether or not anything moved; sending an unchanged frame
-    // every time would burn a render and a round trip per dial for nothing. The clock is part of
-    // the signature, so a running game still ticks.
+    // every time would burn a render and a round trip per dial for nothing. The clock itself stays
+    // out of the signature, #tickAll keeps it current every second on its own.
     const percent = fraction === undefined ? "-" : Math.round(fraction * 100);
-    const signature = `${slot.appId}:${badge}:${position.value}:${settings.artStyle}:${settings.artFit}:${percent}`;
+    const line = since === undefined ? position.value : "clock";
+    const signature = `${slot.appId}:${badge}:${line}:${settings.artStyle}:${settings.artFit}:${percent}`;
     if (this.#drawn.get(target.id) === signature) {
-      return;
+      return badge === "updating";
     }
 
     const art = await renderStripImage(
@@ -362,6 +464,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
     // clock gets its own colour without a second item; the layout has no room for one, and items
     // are not allowed to overlap.
     await target.setFeedback({ art, name: slot.name, position });
+    return badge === "updating";
   }
 
   /**
@@ -400,40 +503,22 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
   }
 
   /**
-   * The line under the name: where the cursor sits, and how long the game on show has been open
-   * when that game is the one running.
+   * When the game on show started running, for the clock that replaces the position line.
    *
    * The clock only appears for the game the dial is actually showing, the same rule the keys
    * follow. A dial parked elsewhere in the library does not report someone else's session.
    * @param settings The dial's settings.
    * @param slot The slot on show.
-   * @param cursor Its position in the combined list.
-   * @param total Size of the combined list.
    * @param badge What the art is framed with, so an idle game skips the lookup entirely.
-   * @returns The line to draw.
+   * @returns The session's start instant, or `undefined` when the dial shows its position instead.
    */
-  async #position(
-    settings: LibraryDialSettings,
-    slot: LibrarySlot,
-    cursor: number,
-    total: number,
-    badge: StatusBadge,
-  ): Promise<{ value: string; color: string; font: { size: number; weight: number } }> {
-    const place = { value: `${cursor + 1} / ${total}`, ...PLACE_STYLE };
-
+  async #runningSince(settings: LibraryDialSettings, slot: LibrarySlot, badge: StatusBadge): Promise<number | undefined> {
     if (badge !== "running" || settings.showPlayTime === false) {
-      return place;
+      return undefined;
     }
 
     const running = await getRunningGame();
-    if (running?.game.appId !== slot.appId || running.since === undefined) {
-      return place;
-    }
-
-    // The clock replaces the position rather than sharing the line with it. There is one row to
-    // work with, and at a size worth reading only one of the two fits; of the pair, where you are
-    // in the library is the one the art already tells you.
-    return { value: formatElapsed(Date.now() - running.since), ...CLOCK_STYLE };
+    return running?.game.appId === slot.appId ? running.since : undefined;
   }
 
   /**
@@ -442,6 +527,8 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
    * @param target The dial to draw on.
    */
   async #drawEmpty(target: DialTarget): Promise<void> {
+    this.#clocks.delete(target.id);
+
     if (this.#drawn.get(target.id) === EMPTY) {
       return;
     }

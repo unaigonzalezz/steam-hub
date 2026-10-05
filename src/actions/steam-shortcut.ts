@@ -7,7 +7,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 
 import { openSteamUrl } from "../steam/launch";
-import { drawNamedKey, profileFor } from "./common";
+import { drawNamedKey } from "./common";
 
 /**
  * Places in the Steam client a key can jump to.
@@ -16,9 +16,7 @@ import { drawNamedKey, profileFor } from "./common";
  * destination is a one-line change here plus an `<option>` in the property inspector.
  */
 const DESTINATIONS = {
-  // Stream Deck profiles. `"games"` is a marker rather than a literal profile name, because the
-  // actual name depends on which device the key is pressed on; see `profileFor` in `./common`.
-  gamesprofile: { profile: "games", title: "Games\nProfile" },
+  // Stream Deck profiles.
   previousprofile: { profile: null, title: "Back" },
 
   // Library
@@ -27,7 +25,10 @@ const DESTINATIONS = {
   workshop: { url: "steam://open/workshop", title: "Work\nshop" },
   addnonsteamgame: { url: "steam://open/addnonsteamgame", title: "Add\nGame" },
 
-  // Community and captures
+  // Community and captures. `gamesprofile` keeps its old name, from when it switched to the games
+  // profile, so keys already set to it keep their choice; that job is the Show installed games
+  // entry key's now.
+  gamesprofile: { url: "steam://url/SteamIDMyProfile", title: "My\nProfile" },
   friends: { url: "steam://open/friends", title: "Friends" },
   inventory: { url: "steam://open/inventory", title: "Inven\ntory" },
   market: { url: "steam://openurl/https://steamcommunity.com/market/", title: "Market" },
@@ -53,7 +54,7 @@ const DESTINATIONS = {
 
   // Only opens when a music library exists; Steam ignores it otherwise.
   music: { url: "steam://open/musicplayer", title: "Music" },
-} as const satisfies Record<string, { title: string } & ({ url: string } | { profile: "games" | null })>;
+} as const satisfies Record<string, { title: string } & ({ url: string } | { profile: null })>;
 
 type Destination = keyof typeof DESTINATIONS;
 
@@ -100,14 +101,13 @@ export class SteamShortcut extends SingletonAction<SteamShortcutSettings> {
    */
   override async onKeyDown(ev: KeyDownEvent<SteamShortcutSettings>): Promise<void> {
     const destination = resolve(ev.payload.settings);
-    const target: { title: string } & ({ url: string } | { profile: "games" | null }) = DESTINATIONS[destination];
+    const target: { title: string } & ({ url: string } | { profile: null }) = DESTINATIONS[destination];
 
     try {
       if ("profile" in target) {
         // `undefined` rather than `null` is what returns to the previously active profile.
-        const profile = target.profile === "games" ? profileFor(ev.action.device.type) : undefined;
-        streamDeck.logger.info(`Switching to profile ${profile ?? "(previous)"}`);
-        await streamDeck.profiles.switchToProfile(ev.action.device.id, profile);
+        streamDeck.logger.info("Switching to the previous profile");
+        await streamDeck.profiles.switchToProfile(ev.action.device.id, undefined);
       } else {
         streamDeck.logger.info(`Opening ${target.url}`);
         await openSteamUrl(target.url);

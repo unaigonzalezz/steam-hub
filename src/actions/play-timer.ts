@@ -9,10 +9,10 @@ import streamDeck, {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { type ArtFit, type ArtStyle, renderKeyImage } from "../steam/artwork";
+import { type ArtFit, type ArtStyle, pluginPath, renderCaption, renderImageFile, renderKeyImage } from "../steam/artwork";
 import { openSteamUrl } from "../steam/launch";
-import { addStatusListener, removeStatusListener } from "../steam/monitor";
-import { getRunningGame } from "../steam/running";
+import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
+import { getCurrentSession, getRunningGame } from "../steam/running";
 import { formatElapsed } from "./common";
 
 /**
@@ -33,9 +33,22 @@ const DEFAULT_FIT: ArtFit = "fill";
 const IDLE_TITLE = "--:--";
 
 /**
- * One running game's session, timed from the moment this plugin first saw it running rather than
- * from Steam's own record, so a session already under way when the plugin starts is timed from
- * then, not from zero.
+ * What a key drawing its clock into the image draws each reading onto.
+ */
+type ClockFace = {
+  /** The key's image without the clock. */
+  base: string;
+
+  /**
+   * Whether the clock sits in the middle, inside the stock art's display, or along the bottom of a
+   * game's art, clear of its "running" frame.
+   */
+  middle: boolean;
+};
+
+/**
+ * One running game's session, timed from when Steam launched it, so it matches Steam's own record
+ * and a session already under way when the plugin starts is still timed from its real start.
  */
 type Session = {
   appId: string;
@@ -52,7 +65,10 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
   /** Bound so the same reference can be added to and removed from the shared poll. */
   readonly #onPoll = (): Promise<void> => this.#redrawAll();
 
-  /** Whether {@link PlayTimer.#onPoll} is currently registered. */
+  /** Bound for the same reason, for the once-a-second clock. */
+  readonly #onClock = (): Promise<void> => this.#tickAll();
+
+  /** Whether {@link PlayTimer.#onPoll} and {@link PlayTimer.#onClock} are currently registered. */
   #listening = false;
 
   /** What each key currently shows, so a poll only repaints what actually changed. */
@@ -60,6 +76,9 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
 
   /** The session in progress, if any. Lives only in memory, a restart starts the clock over. */
   #session: Session | undefined;
+
+  /** What each key draws its clock onto; absent only when even the stock image is missing. */
+  readonly #faces = new Map<string, ClockFace>();
 
   /**
    * Draws the key when it comes into view, and starts following the running game's session.
@@ -69,6 +88,7 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
+      addClockListener(this.#onClock);
     }
 
     await this.#draw(ev.action, ev.payload.settings);
@@ -80,11 +100,13 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
    */
   override onWillDisappear(ev: WillDisappearEvent<PlayTimerSettings>): void {
     this.#drawn.delete(ev.action.id);
+    this.#faces.delete(ev.action.id);
 
     // `actions` still includes the departing key at this point, hence the count of one.
     if (this.#listening && [...this.actions].length <= 1) {
       this.#listening = false;
       removeStatusListener(this.#onPoll);
+      removeClockListener(this.#onClock);
     }
   }
 
@@ -142,6 +164,31 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
   }
 
   /**
+   * Advances the clock on every visible key between polls, from the session the last poll found.
+   * Only the clock changes, drawn onto the art already rendered, so nothing
+   * is read and no art is rendered again.
+   */
+  async #tickAll(): Promise<void> {
+    // Straight from the shared session, whose start may just have been corrected to Steam's stamp.
+    const session = getCurrentSession();
+    if (session === undefined || this.#session?.appId !== session.appId) {
+      return; // idle, or the game changed and the next poll will repaint the keys properly
+    }
+
+    const elapsed = formatElapsed(Date.now() - session.since);
+    await Promise.all(
+      [...this.actions].map(async (target) => {
+        if (!target.isKey()) {
+          return;
+        }
+
+        const face = this.#faces.get(target.id);
+        await (face === undefined ? target.setTitle(elapsed) : target.setImage(clockImage(face, elapsed)));
+      }),
+    );
+  }
+
+  /**
    * Draws a single key from the session in progress.
    * @param target Key to draw on.
    * @param settings The key's settings.
@@ -158,8 +205,8 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
   }
 
   /**
-   * Writes to a key: the clock always, since a title is cheap and changes every tick anyway, but
-   * the art only when the game or style behind it actually changed, that is the expensive part.
+   * Writes to a key: the clock always, since it changes every tick anyway, but the art only when the
+   * game or style behind it actually changed, that is the expensive part.
    * @param target Key to draw on.
    * @param settings The key's settings.
    */
@@ -167,18 +214,45 @@ export class PlayTimer extends SingletonAction<PlayTimerSettings> {
     const session = this.#session;
     const style = settings.artStyle ?? DEFAULT_STYLE;
     const signature = `${session?.appId ?? "idle"}:${style}:${settings.artFit ?? DEFAULT_FIT}`;
+    const reading = session === undefined ? IDLE_TITLE : formatElapsed(Date.now() - session.since);
 
     if (this.#drawn.get(target.id) !== signature) {
       this.#drawn.set(target.id, signature);
+      this.#faces.delete(target.id);
 
-      const image =
+      const art =
         session === undefined || style === "none"
           ? undefined
           : await renderKeyImage(session.appId, style, settings.artFit ?? DEFAULT_FIT, "running");
 
-      await target.setImage(image);
+      // Without game art, the stock display, so the clock still reads as a screen; with it, along the
+      // bottom, leaving the art to show which game is being timed.
+      const base = art ?? (await renderImageFile(pluginPath("imgs", "actions", "playtimer", "key@2x.png")));
+      if (base !== undefined) {
+        this.#faces.set(target.id, { base, middle: art === undefined });
+      }
     }
 
-    await target.setTitle(session === undefined ? IDLE_TITLE : formatElapsed(Date.now() - session.since));
+    const face = this.#faces.get(target.id);
+    if (face === undefined) {
+      await target.setTitle(reading); // the stock image itself is missing, so there is nothing to draw on
+    } else {
+      await target.setImage(clockImage(face, reading, session === undefined));
+      await target.setTitle("");
+    }
   }
+}
+
+/**
+ * Draws a clock reading onto a key.
+ * @param face What to draw it onto, and where.
+ * @param reading The formatted time, or the idle placeholder.
+ * @param idle Whether no game is running, drawn dimmer so it reads as "not counting".
+ * @returns A `data:` URI.
+ */
+function clockImage(face: ClockFace, reading: string, idle = false): string {
+  // The stock display has room for a large clock; over game art it stays the size the library keys use.
+  const long = reading.length > 5; // "1:23:45" is wider than "12:07"
+  const size = face.middle ? (long ? 28 : 34) : long ? 24 : 28;
+  return renderCaption(face.base, { main: reading, size, middle: face.middle, framed: !face.middle, muted: idle });
 }

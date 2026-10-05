@@ -13,7 +13,7 @@ import { type ArtFit, type ArtStyle, renderKeyImage, type StatusBadge } from "..
 import { openSteamUrl } from "../steam/launch";
 import { addStatusListener, removeStatusListener } from "../steam/monitor";
 import { getRunningGame, type RunningGame } from "../steam/running";
-import { wrapTitle } from "./common";
+import { paintKey } from "./common";
 
 /**
  * Settings for {@link NowPlaying}.
@@ -178,7 +178,6 @@ export class NowPlaying extends SingletonAction<NowPlayingSettings> {
       badge,
     );
 
-    await target.setImage(image);
-    await target.setTitle(settings.showTitle === true ? wrapTitle(current.game.name) : "");
+    await paintKey(target, image, settings.showTitle === true ? current.game.name : "", "nowplaying");
   }
 }
