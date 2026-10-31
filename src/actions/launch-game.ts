@@ -10,13 +10,13 @@ import streamDeck, {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 
-import { type ArtFit, type ArtStyle, clearRenderCache, renderKeyImage, type StatusBadge } from "../steam/artwork";
+import { type ArtFit, type ArtStyle, clearRenderCache, renderCaption, renderKeyImage } from "../steam/artwork";
 import { launchGame } from "../steam/launch";
-import { findGame, getInstalledGames, groupForPicker } from "../steam/library";
-import { addStatusListener, removeStatusListener } from "../steam/monitor";
+import { findGame, getDownloadFraction, getInstalledGames, groupForPicker } from "../steam/library";
+import { addClockListener, addStatusListener, removeClockListener, removeStatusListener } from "../steam/monitor";
 import { findSteam } from "../steam/paths";
 import { getAppStates } from "../steam/status";
-import { badgeFor, paintKey } from "./common";
+import { badgeFor, drawnLines, paintKey } from "./common";
 
 /**
  * Settings for {@link LaunchGame}.
@@ -100,13 +100,19 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
   /** Bound so the same reference can be added to and removed from the shared poll. */
   readonly #onPoll = (): Promise<void> => this.#refreshStatuses();
 
-  /** Whether {@link LaunchGame.#onPoll} is currently registered. */
+  /** Bound for the same reason, for the once-a-second clock that keeps download rings filling. */
+  readonly #onClock = (): Promise<void> => this.#tickDownloads();
+
+  /** Whether {@link LaunchGame.#onPoll} and {@link LaunchGame.#onClock} are currently registered. */
   #listening = false;
 
   /**
-   * Badge last drawn on each key, so a poll only repaints what actually changed.
+   * What each key last showed, so a poll or a tick only repaints what actually changed.
    */
-  readonly #drawn = new Map<string, StatusBadge>();
+  readonly #drawn = new Map<string, string>();
+
+  /** Keys whose game is updating, so the clock can keep their ring and percentage moving between polls. */
+  readonly #downloads = new Map<string, KeyAction<LaunchGameSettings>>();
 
   /**
    * Draws the key when it comes into view, on startup, or when the user navigates to its page.
@@ -116,6 +122,7 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
     if (!this.#listening) {
       this.#listening = true;
       addStatusListener(this.#onPoll);
+      addClockListener(this.#onClock);
     }
 
     await this.draw(ev.action, ev.payload.settings);
@@ -127,11 +134,13 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
    */
   override onWillDisappear(ev: WillDisappearEvent<LaunchGameSettings>): void {
     this.#drawn.delete(ev.action.id);
+    this.#downloads.delete(ev.action.id);
 
     // `actions` still includes the departing key at this point, hence the count of one.
     if (this.#listening && [...this.actions].length <= 1) {
       this.#listening = false;
       removeStatusListener(this.#onPoll);
+      removeClockListener(this.#onClock);
     }
   }
 
@@ -182,38 +191,22 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
    * Repaints any visible key whose game has started, stopped, or begun updating.
    */
   async #refreshStatuses(): Promise<void> {
-    const visible = [...this.actions];
-    if (visible.length === 0) {
-      return;
-    }
-
-    const states = await getAppStates();
-
     await Promise.all(
-      visible.map(async (target) => {
-        if (!target.isKey()) {
-          return;
-        }
-
-        const settings = await target.getSettings();
-        const appId = resolveAppId(settings);
-        if (appId === undefined || settings.artStyle === "none") {
-          return;
-        }
-
-        const badge = badgeFor(settings.showStatus !== false, states.get(appId));
-        if (this.#drawn.get(target.id) === badge) {
-          return;
-        }
-
-        const image = await renderKeyImage(appId, settings.artStyle ?? DEFAULT_STYLE, settings.artFit ?? DEFAULT_FIT, badge);
-
-        if (image !== undefined) {
-          await target.setImage(image);
-          this.#drawn.set(target.id, badge);
+      [...this.actions].map(async (target) => {
+        if (target.isKey()) {
+          await this.draw(target, await target.getSettings());
         }
       }),
-    );
+    ).catch((err) => streamDeck.logger.error("Could not repaint the game keys", err));
+  }
+
+  /**
+   * Moves the ring and percentage on keys whose game is updating, between the slower status polls.
+   */
+  async #tickDownloads(): Promise<void> {
+    await Promise.all(
+      [...this.#downloads.values()].map(async (target) => this.draw(target, await target.getSettings())),
+    ).catch((err) => streamDeck.logger.error("Could not repaint a download ring", err));
   }
 
   /**
@@ -261,6 +254,8 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
     }
 
     const appId = resolveAppId(settings);
+    this.#downloads.delete(target.id); // put back below while the game is updating
+
     if (appId === undefined) {
       this.#drawn.delete(target.id);
       // The action's own icon from the manifest, with the prompt drawn on it. The title is left alone,
@@ -281,16 +276,46 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
       updated.gameName = name;
     }
 
+    const style = settings.artStyle ?? DEFAULT_STYLE;
+    const fit = settings.artFit ?? DEFAULT_FIT;
     const badge = badgeFor(settings.showStatus !== false, (await getAppStates()).get(appId));
-    const image = await renderKeyImage(appId, settings.artStyle ?? DEFAULT_STYLE, settings.artFit ?? DEFAULT_FIT, badge);
 
-    // The name is drawn into the image. A title is only ever cleared when it is one an earlier
-    // version wrote, never one the user typed.
-    await paintKey(target, image, settings.showTitle === true ? (name ?? `App ${appId}`) : "", "launch", {
-      clearTitle: settings.titleIsOurs === true,
-    });
+    // While updating, the amber ring fills to the download's progress and the percentage is written
+    // along the top, kept moving every second by the clock.
+    const fraction = badge === "updating" ? await getDownloadFraction(appId) : undefined;
+    const percent = fraction === undefined ? undefined : Math.round(fraction * 100);
+    if (badge === "updating") {
+      this.#downloads.set(target.id, target);
+    }
+
+    const label = settings.showTitle === true ? (name ?? `App ${appId}`) : "";
+    const signature = `${appId}:${style}:${fit}:${badge}:${percent ?? "-"}:${label}:${settings.titleIsOurs === true}`;
+
+    if (this.#drawn.get(target.id) !== signature) {
+      const image = await renderKeyImage(appId, style, fit, badge, fraction);
+
+      // The name is drawn into the image. A title is only ever cleared when it is one an earlier
+      // version wrote, never one the user typed.
+      if (percent !== undefined && image !== undefined) {
+        await target.setImage(
+          renderCaption(image, {
+            main: String(percent),
+            suffix: "%",
+            top: true,
+            framed: true,
+            ...(label === "" ? {} : { label: drawnLines(label) }),
+          }),
+        );
+        if (settings.titleIsOurs === true) {
+          await target.setTitle("");
+        }
+      } else {
+        await paintKey(target, image, label, "launch", { clearTitle: settings.titleIsOurs === true });
+      }
+
+      this.#drawn.set(target.id, signature);
+    }
     updated.titleIsOurs = false;
-    this.#drawn.set(target.id, badge);
 
     // Written once, and only when something actually changed, so this can never loop.
     if (updated.gameName !== settings.gameName || updated.titleIsOurs !== settings.titleIsOurs) {

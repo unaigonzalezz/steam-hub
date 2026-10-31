@@ -47,7 +47,7 @@ Launches any installed Steam game from a key. Pick one from a dropdown of your l
 
 The key shows that game's own store art, capsule, header, hero art, or logo, your choice per key. Turn on **Write the game name on the key** to draw the name over it too.
 
-Turn on **Frame the key while running or updating** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room.
+Turn on **Frame the key while running or updating** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room. While it updates, the amber frame fills in as the download progresses and the percentage is written along the top.
 
 ### Show Installed Games
 

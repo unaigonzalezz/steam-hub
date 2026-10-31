@@ -1085,10 +1085,18 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
       elapsed !== undefined,
     );
 
+    // While updating, the download's percentage takes the top edge, the way it does for a first install.
+    const progress = badge === "updating" && fraction !== undefined ? `${percent}%` : undefined;
+
     // Drawn, the text goes into the image along with the clock, and the key carries no title at all.
-    const nameTitle = drawn ? "" : text.title;
+    const nameTitle = drawn ? "" : progress === undefined ? text.title : withElapsed(text.title, progress);
     const art: ClockArt | undefined = drawn
-      ? { base, ...text.drawn, framed: badge === "running" || badge === "updating" }
+      ? {
+          base,
+          ...text.drawn,
+          ...(progress === undefined ? {} : { reading: { main: String(percent), suffix: "%" } }),
+          framed: badge === "running" || badge === "updating",
+        }
       : undefined;
     const title = elapsed === undefined || drawn ? nameTitle : withElapsed(nameTitle, elapsed);
 
