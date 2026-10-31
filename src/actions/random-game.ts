@@ -83,7 +83,7 @@ export class RandomGame extends SingletonAction<RandomGameSettings> {
     const pick = choices[Math.floor(Math.random() * choices.length)]!;
 
     try {
-      await launchGame(pick.appId);
+      await launchGame(pick.appId, () => ev.action.showAlert());
     } catch (err) {
       streamDeck.logger.error(`Could not launch ${pick.name}`, err);
       await ev.action.showAlert();

@@ -157,7 +157,7 @@ export class LaunchGame extends SingletonAction<LaunchGameSettings> {
     }
 
     try {
-      await launchGame(appId);
+      await launchGame(appId, () => ev.action.showAlert());
       await ev.action.showOk();
     } catch (err) {
       streamDeck.logger.error(`Could not launch ${ev.payload.settings.gameName ?? appId}`, err);

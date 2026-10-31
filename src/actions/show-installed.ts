@@ -536,7 +536,7 @@ export class ShowInstalled extends SingletonAction<SlotSettings> {
 
     try {
       streamDeck.logger.info(`Launching ${slot.name} from key ${target.id}`);
-      await launchGame(slot.appId);
+      await launchGame(slot.appId, () => target.showAlert());
       await target.showOk();
     } catch (err) {
       streamDeck.logger.error(`Could not launch ${slot.name}`, err);
