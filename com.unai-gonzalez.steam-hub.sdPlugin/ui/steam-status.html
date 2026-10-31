@@ -11,6 +11,7 @@
     <sdpi-item label="On press">
       <sdpi-select setting="mode" id="mode">
         <option value="cycle">Cycle Online, Away, Invisible</option>
+        <option value="toggle">Toggle between two statuses</option>
         <option value="set">Always set one status</option>
       </sdpi-select>
     </sdpi-item>
@@ -19,6 +20,25 @@
       <sdpi-item label="Set status to">
         <!-- No default: a stored state is what tells an older key apart from a cycling one. -->
         <sdpi-select setting="state" id="state">
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="invisible">Invisible</option>
+          <option value="offline">Offline</option>
+        </sdpi-select>
+      </sdpi-item>
+    </div>
+
+    <div id="toggle-row" hidden>
+      <sdpi-item label="First status">
+        <sdpi-select setting="toggleA" id="toggleA" default="online">
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="invisible">Invisible</option>
+          <option value="offline">Offline</option>
+        </sdpi-select>
+      </sdpi-item>
+      <sdpi-item label="Second status">
+        <sdpi-select setting="toggleB" id="toggleB" default="invisible">
           <option value="online">Online</option>
           <option value="away">Away</option>
           <option value="invisible">Invisible</option>
@@ -74,12 +94,13 @@
       const modeSelect = document.getElementById("mode");
       const stateSelect = document.getElementById("state");
       const stateRow = document.getElementById("state-row");
+      const toggleRow = document.getElementById("toggle-row");
       const modeHint = document.getElementById("mode-hint");
       let current = {};
 
       /** What a key does, reading keys from before "On press" existed the way the plugin does. */
       function effectiveMode(settings) {
-        if (settings.mode === "cycle" || settings.mode === "set") {
+        if (settings.mode === "cycle" || settings.mode === "toggle" || settings.mode === "set") {
           return settings.mode;
         }
 
@@ -92,10 +113,14 @@
         const mode = effectiveMode(current);
 
         stateRow.hidden = mode !== "set";
+        toggleRow.hidden = mode !== "toggle";
         modeHint.textContent =
-          mode === "cycle"
-            ? "Shows your current status, live. Going offline from Steam's own menu is the one change it cannot see."
-            : "Shows the status this key sets.";
+          mode === "set"
+            ? "Shows the status this key sets."
+            : (mode === "toggle"
+                ? "A press switches from the first status to the second, and from any other back to the first. "
+                : "") +
+              "Shows your current status, live. Going offline from Steam's own menu is the one change it cannot see.";
 
         // Older keys have no stored mode: show what they already do rather than a blank picker.
         if (modeSelect.value !== mode) {
