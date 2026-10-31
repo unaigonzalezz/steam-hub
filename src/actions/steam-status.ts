@@ -69,12 +69,19 @@ const NEXT: Record<PersonaState, State> = {
   ingame: "away",
 };
 
+/** The two states a toggling key switches between when none are chosen. */
+const DEFAULT_TOGGLE: readonly [State, State] = ["online", "invisible"];
+
 /**
  * What a key does:
  * - `cycle`: shows the current state, and a press moves to the next one.
+ * - `toggle`: shows the current state, and a press switches between two chosen states.
  * - `set`: always switches to one chosen state, and shows that state.
  */
-type StatusMode = "cycle" | "set";
+type StatusMode = "cycle" | "toggle" | "set";
+
+/** Modes that show the user's current state rather than a fixed one. */
+const LIVE_MODES: ReadonlySet<StatusMode> = new Set(["cycle", "toggle"]);
 
 /**
  * Settings for {@link SteamStatus}.
@@ -88,6 +95,12 @@ type SteamStatusSettings = {
 
   /** Which state to switch to, in `set` mode. */
   state?: State;
+
+  /** The first of the two states switched between, in `toggle` mode; also where any other state goes. */
+  toggleA?: State;
+
+  /** The second of the two states switched between, in `toggle` mode. */
+  toggleB?: State;
 
   /** Whether the state's name is written on the key. Off by default, since the bubble shows it. */
   showTitle?: boolean;
@@ -106,8 +119,9 @@ const PENDING_MS = 5_000;
  * A key showing the signed-in user's avatar with a bubble for their Steam state.
  *
  * By default it shows the current state, followed live, and a tap moves to the next of online,
- * away and invisible. It can instead be set to always switch to one state, which a row of keys,
- * one per state, used to be the only way to do. Holding either kind opens the friends list.
+ * away and invisible. It can instead toggle between two chosen states, or always switch to one
+ * state, which a row of keys, one per state, used to be the only way to do. Holding any kind opens
+ * the friends list.
  */
 @action({ UUID: "com.unai-gonzalez.steam-hub.status" })
 export class SteamStatus extends SingletonAction<SteamStatusSettings> {
@@ -193,7 +207,13 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
     }
 
     const { settings } = ev.payload;
-    const state = modeOf(settings) === "cycle" ? NEXT[await this.#currentState()] : stateOf(settings);
+    const mode = modeOf(settings);
+    const state =
+      mode === "cycle"
+        ? NEXT[await this.#currentState()]
+        : mode === "toggle"
+          ? toggleFrom(await this.#currentState(), settings)
+          : stateOf(settings);
 
     try {
       streamDeck.logger.info(`Setting Steam status to ${state}`);
@@ -272,7 +292,7 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
    * @param settings The key's settings.
    */
   async #draw(target: KeyAction<SteamStatusSettings>, settings: SteamStatusSettings): Promise<void> {
-    const shown: PersonaState = modeOf(settings) === "cycle" ? await this.#currentState() : stateOf(settings);
+    const shown: PersonaState = LIVE_MODES.has(modeOf(settings)) ? await this.#currentState() : stateOf(settings);
     const name = settings.showTitle === true ? await nameFor(shown) : "";
 
     // Each state has its own frame, so any of them can be redrawn by overwriting one PNG; a state
@@ -303,7 +323,7 @@ export class SteamStatus extends SingletonAction<SteamStatusSettings> {
  * @returns The mode.
  */
 function modeOf(settings: SteamStatusSettings): StatusMode {
-  if (settings.mode === "cycle" || settings.mode === "set") {
+  if (settings.mode === "cycle" || settings.mode === "toggle" || settings.mode === "set") {
     return settings.mode;
   }
 
@@ -318,6 +338,23 @@ function modeOf(settings: SteamStatusSettings): StatusMode {
 function stateOf(settings: SteamStatusSettings): State {
   const state = settings.state;
   return state !== undefined && state in STATES ? state : DEFAULT_STATE;
+}
+
+/**
+ * What a press does when toggling: from the first chosen state to the second, and from the second,
+ * or any other state, back to the first. In game counts as online.
+ * @param current The state as it stands.
+ * @param settings Current settings.
+ * @returns The state to switch to.
+ */
+function toggleFrom(current: PersonaState, settings: SteamStatusSettings): State {
+  const valid = (state: State | undefined, fallback: State): State =>
+    state !== undefined && state in STATES ? state : fallback;
+  const a = valid(settings.toggleA, DEFAULT_TOGGLE[0]);
+  const b = valid(settings.toggleB, DEFAULT_TOGGLE[1]);
+  const now: State = current === "ingame" ? "online" : current;
+
+  return now === a ? b : a;
 }
 
 /**

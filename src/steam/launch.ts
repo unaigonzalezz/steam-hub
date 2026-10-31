@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
+import { checkElevation } from "./elevation";
 import { findSteam } from "./paths";
 import { getAppStates } from "./status";
 
@@ -31,8 +32,9 @@ const LAUNCH_POLL_MS = 1_000;
  * takes. Steam ignores a second request for a game already starting, so the retry is harmless even
  * when the first one was merely slow.
  * @param appId Steam application id.
+ * @param onLost Called if Steam never picks the launch up, so the key can show it failed.
  */
-export async function launchGame(appId: string): Promise<void> {
+export async function launchGame(appId: string, onLost?: () => unknown): Promise<void> {
   if (!/^\d{1,10}$/.test(appId)) {
     throw new Error(`Refusing to launch invalid app id "${appId}"`);
   }
@@ -44,7 +46,15 @@ export async function launchGame(appId: string): Promise<void> {
   const route = await openSteamUrl(url);
 
   if (process.platform === "win32") {
-    void confirmLaunch(appId, url, route, cold ? COLD_LAUNCH_CONFIRM_MS : LAUNCH_CONFIRM_MS);
+    void confirmLaunch(appId, url, route, cold ? COLD_LAUNCH_CONFIRM_MS : LAUNCH_CONFIRM_MS).then(async (picked) => {
+      if (!picked && onLost !== undefined) {
+        try {
+          await onLost();
+        } catch {
+          // the key may be gone by now; the log already says what happened
+        }
+      }
+    });
   }
 }
 
@@ -60,31 +70,52 @@ type LaunchRoute = "executable" | "shell";
  * @param url The `steam://` URL that was opened.
  * @param route How it was opened.
  * @param timeoutMs How long to wait before giving up on it.
+ * @returns `false` only when Steam is known to have dropped the launch.
  */
-async function confirmLaunch(appId: string, url: string, route: LaunchRoute, timeoutMs: number): Promise<void> {
+async function confirmLaunch(appId: string, url: string, route: LaunchRoute, timeoutMs: number): Promise<boolean> {
   try {
     if (await waitForApp(appId, timeoutMs)) {
       streamDeck.logger.info(`Steam picked up app ${appId}`);
-      return;
+      return true;
     }
 
     const retry: LaunchRoute = route === "executable" ? "shell" : "executable";
     streamDeck.logger.warn(`Steam did not pick up app ${appId} via the ${route}; retrying via the ${retry}`);
 
-    if (!(await openVia(retry, url))) {
+    if (await openVia(retry, url)) {
+      if (await waitForApp(appId, LAUNCH_CONFIRM_MS)) {
+        streamDeck.logger.info(`Steam picked up app ${appId} on retry`);
+        return true;
+      }
+    } else {
       streamDeck.logger.warn(`No ${retry} route available to retry app ${appId}`);
-      return;
     }
 
-    if (await waitForApp(appId, LAUNCH_CONFIRM_MS)) {
-      streamDeck.logger.info(`Steam picked up app ${appId} on retry`);
-    } else {
-      streamDeck.logger.error(
-        `Steam never picked up app ${appId}. If Steam or Stream Deck runs as administrator, run both the same way.`,
-      );
-    }
+    streamDeck.logger.error(`Steam never picked up app ${appId}. ${await explainLostLaunch()}`);
+    return false;
   } catch (err) {
     streamDeck.logger.error(`Could not confirm the launch of app ${appId}`, err);
+    return true; // nothing is known to have gone wrong with the launch itself
+  }
+}
+
+/**
+ * Works out the likeliest reason Steam dropped a launch, for the log.
+ * @returns A sentence saying why, and what to do about it.
+ */
+async function explainLostLaunch(): Promise<string> {
+  const pid = await steamPid();
+  const elevation = pid === undefined ? "unknown" : await checkElevation(pid);
+
+  switch (elevation) {
+    case "steam-elevated":
+      return "Steam is running as administrator and Stream Deck is not, so Windows blocks the launch. Run Steam normally (not as administrator), or run both as administrator.";
+    case "plugin-elevated":
+      return "Stream Deck is running as administrator and Steam is not, so Windows blocks the launch. Run Stream Deck normally (not as administrator), or run both as administrator.";
+    case "match":
+      return "Steam and Stream Deck run with the same privileges, so that is not the cause. Check that the game launches from Steam itself.";
+    default:
+      return "If Steam or Stream Deck runs as administrator, run both the same way.";
   }
 }
 
@@ -114,6 +145,23 @@ async function waitForApp(appId: string, timeoutMs: number): Promise<boolean> {
  * @returns `true` when it is, and also when that cannot be told, so a launch is never held back.
  */
 export async function isSteamRunning(): Promise<boolean> {
+  return (await readActivePid()) !== 0;
+}
+
+/**
+ * The running Steam client's process id, from the registry.
+ * @returns The id, or `undefined` when Steam is closed or it cannot be read.
+ */
+async function steamPid(): Promise<number | undefined> {
+  const pid = await readActivePid();
+  return pid === undefined || pid === 0 ? undefined : pid;
+}
+
+/**
+ * Reads the process id Steam keeps in the registry while open, and sets to 0 when it closes.
+ * @returns The id, 0 when Steam is closed, or `undefined` when it cannot be read.
+ */
+async function readActivePid(): Promise<number | undefined> {
   try {
     const { stdout } = await execFileAsync(
       "reg",
@@ -122,9 +170,9 @@ export async function isSteamRunning(): Promise<boolean> {
     );
 
     const match = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout);
-    return match === null || Number.parseInt(match[1]!, 16) !== 0;
+    return match === null ? undefined : Number.parseInt(match[1]!, 16);
   } catch {
-    return true;
+    return undefined;
   }
 }
 

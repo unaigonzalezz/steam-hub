@@ -298,7 +298,7 @@ export class LibraryDial extends SingletonAction<LibraryDialSettings> {
     }
 
     try {
-      await launchGame(slot.appId);
+      await launchGame(slot.appId, () => ev.action.showAlert());
     } catch (err) {
       streamDeck.logger.error(`Could not launch ${slot.name}`, err);
       await ev.action.showAlert();

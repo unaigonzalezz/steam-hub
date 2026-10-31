@@ -47,7 +47,7 @@ Launches any installed Steam game from a key. Pick one from a dropdown of your l
 
 The key shows that game's own store art, capsule, header, hero art, or logo, your choice per key. Turn on **Write the game name on the key** to draw the name over it too.
 
-Turn on **Frame the key while running or updating** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room.
+Turn on **Frame the key while running or updating** and the key frames itself green while the game is running, amber while it's updating, so you can tell what's going on from across the room. While it updates, the amber frame fills in as the download progresses and the percentage is written along the top.
 
 ### Show Installed Games
 
@@ -119,7 +119,7 @@ Jumps to a specific part of the Steam client from a single key: Big Picture, you
 
 ### Steam Status
 
-Shows your Steam avatar, framed in the colour of your current status, and follows it live. By default each press moves to the next of online, away and invisible; offline is left out of the cycle, since it closes your friends list and is easy to land on by accident. Set **On press** to **Always set one status** instead for a key that always switches to the same status, offline included. Hold the key to open your friends list.
+Shows your Steam avatar, framed in the colour of your current status, and follows it live. By default each press moves to the next of online, away and invisible; offline is left out of the cycle, since it closes your friends list and is easy to land on by accident. Set **On press** to **Toggle between two statuses** for a key that flips between two statuses you choose (Online and Invisible by default); from any other status it goes to the first one, and in game counts as online. Set **On press** to **Always set one status** instead for a key that always switches to the same status, offline included. Hold the key to open your friends list.
 
 > Steam doesn't save going offline the way it saves the other statuses. Set from this plugin it's picked up anyway; set from Steam's own menu, the key keeps showing the previous status until the next change.
 
